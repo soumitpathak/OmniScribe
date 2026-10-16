@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuditResponse } from '../types/compliance';
 import { RiskMeter } from './RiskMeter';
+import { RiskTrendChart } from './RiskTrendChart';
 import { ExtractedEntitiesCard } from './ExtractedEntitiesCard';
 import { DiscrepanciesCard } from './DiscrepanciesCard';
 import { ActionItemsCard } from './ActionItemsCard';
@@ -23,17 +24,25 @@ import {
   Building,
   Calendar,
   Layers,
+  Activity,
 } from 'lucide-react';
 
 interface AuditReportViewProps {
   audit: AuditResponse;
   onReset: () => void;
+  history?: AuditResponse[];
+  onSelectAudit?: (audit: AuditResponse) => void;
 }
 
-export const AuditReportView: React.FC<AuditReportViewProps> = ({ audit, onReset }) => {
+export const AuditReportView: React.FC<AuditReportViewProps> = ({
+  audit,
+  onReset,
+  history = [],
+  onSelectAudit,
+}) => {
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'entities' | 'discrepancies' | 'actions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
 
   // Status badge styling
   let statusBadgeBg = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
@@ -259,6 +268,13 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         </div>
       </div>
 
+      {/* Trend Visualization: Last 10 Audits via Recharts */}
+      <RiskTrendChart
+        currentAudit={audit}
+        history={history}
+        onSelectAudit={onSelectAudit}
+      />
+
       {/* Navigation tabs for detailed breakdown */}
       <div className="flex border-b border-slate-800 text-xs gap-2 overflow-x-auto pb-1">
         <button
@@ -271,6 +287,17 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         >
           <Layers className="w-3.5 h-3.5 text-emerald-400" />
           Full Audit Dossier
+        </button>
+        <button
+          onClick={() => setActiveTab('trend')}
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+            activeTab === 'trend'
+              ? 'bg-slate-800 text-white border border-slate-700'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Activity className="w-3.5 h-3.5 text-cyan-400" />
+          Risk Velocity & Trend
         </button>
         <button
           onClick={() => setActiveTab('entities')}
@@ -324,6 +351,16 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           {audit.agent_reasoning_trace && (
             <AgentThoughtTrace traces={audit.agent_reasoning_trace} />
           )}
+        </div>
+      )}
+
+      {activeTab === 'trend' && (
+        <div className="space-y-6">
+          <RiskTrendChart
+            currentAudit={audit}
+            history={history}
+            onSelectAudit={onSelectAudit}
+          />
         </div>
       )}
 

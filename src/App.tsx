@@ -160,7 +160,12 @@ export default function App() {
         {isLoading ? (
           <AuditPipelineAnimation country={selectedCountry} />
         ) : currentAudit ? (
-          <AuditReportView audit={currentAudit} onReset={() => setCurrentAudit(null)} />
+          <AuditReportView
+            audit={currentAudit}
+            onReset={() => setCurrentAudit(null)}
+            history={history}
+            onSelectAudit={(audit) => setCurrentAudit(audit)}
+          />
         ) : (
           <div className="space-y-8">
             {/* Hero Pitch Banner */}
