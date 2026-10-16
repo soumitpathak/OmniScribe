@@ -6,6 +6,7 @@ import { DiscrepanciesCard } from './DiscrepanciesCard';
 import { ActionItemsCard } from './ActionItemsCard';
 import { DutyTariffCard } from './DutyTariffCard';
 import { AgentThoughtTrace } from './AgentThoughtTrace';
+import { generateAuditPDF } from '../utils/pdfGenerator';
 import {
   Download,
   Share2,
@@ -13,6 +14,7 @@ import {
   AlertTriangle,
   ShieldAlert,
   FileText,
+  FileDown,
   Copy,
   Printer,
   RotateCcw,
@@ -30,6 +32,7 @@ interface AuditReportViewProps {
 
 export const AuditReportView: React.FC<AuditReportViewProps> = ({ audit, onReset }) => {
   const [copied, setCopied] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'entities' | 'discrepancies' | 'actions'>('overview');
 
   // Status badge styling
@@ -115,6 +118,18 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Generate and download formatted PDF using jspdf
+  const handleDownloadPDF = () => {
+    setIsGeneratingPdf(true);
+    try {
+      generateAuditPDF(audit);
+    } catch (err) {
+      console.error('Failed to generate PDF summary:', err);
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Quick Actions */}
@@ -172,6 +187,18 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
           {/* Action Buttons */}
           <div className="flex flex-wrap lg:flex-col gap-2 shrink-0">
+            {/* Formatted PDF Button via jspdf */}
+            <button
+              onClick={handleDownloadPDF}
+              type="button"
+              disabled={isGeneratingPdf}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer transform hover:-translate-y-0.5"
+              title="Download official formatted customs inspection PDF report"
+            >
+              <FileDown className="w-4 h-4 text-emerald-100" />
+              <span>{isGeneratingPdf ? 'Generating PDF...' : 'Download Formatted PDF'}</span>
+            </button>
+
             <button
               onClick={handleExportJSON}
               type="button"
@@ -194,7 +221,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               <button
                 onClick={handleCopySummary}
                 type="button"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950/80 hover:bg-slate-800 text-xs font-medium text-slate-300 border border-slate-800 transition-colors flex-1 justify-center"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950/80 hover:bg-slate-800 text-xs font-medium text-slate-300 border border-slate-800 transition-colors flex-1 justify-center cursor-pointer"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                 <span>{copied ? 'Copied!' : 'Copy Summary'}</span>
@@ -203,7 +230,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               <button
                 onClick={onReset}
                 type="button"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950/80 hover:bg-slate-800 text-xs font-medium text-slate-400 hover:text-white border border-slate-800 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950/80 hover:bg-slate-800 text-xs font-medium text-slate-400 hover:text-white border border-slate-800 transition-colors cursor-pointer"
                 title="Audit Another Document"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
