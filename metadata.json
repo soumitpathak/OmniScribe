@@ -1,0 +1,6 @@
+{
+  "name": "OmniScribe - Logistics Regulatory Compliance Agent",
+  "description": "Autonomous Regulatory Compliance & Continuous Audit Agent for Cross-Border Logistics powered by Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
