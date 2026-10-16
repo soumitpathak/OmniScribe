@@ -6,7 +6,26 @@ interface ExtractedEntitiesCardProps {
   entities: ExtractedEntities;
 }
 
-export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ entities }) => {
+export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ entities: rawEntities }) => {
+  const entities = rawEntities || {
+    document_type: 'Customs Entry',
+    document_number: 'N/A',
+    document_date: 'N/A',
+    shipper_name: 'Not Declared',
+    shipper_address: 'Address unlisted',
+    shipper_country: 'N/A',
+    consignee_name: 'Not Declared',
+    consignee_address: 'Address unlisted',
+    consignee_country: 'N/A',
+    mode_of_transport: 'N/A',
+    port_of_loading: 'N/A',
+    port_of_discharge: 'N/A',
+    incoterms: 'FOB',
+    currency: 'USD',
+    total_declared_value: 0,
+    items: [],
+  };
+
   return (
     <div className="bg-slate-900/90 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
       {/* Header */}

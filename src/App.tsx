@@ -9,6 +9,9 @@ import { SystemArchitectureModal } from './components/SystemArchitectureModal';
 import { HSCodeLookupModal } from './components/HSCodeLookupModal';
 import { AuditResponse } from './types/compliance';
 import { useToast } from './context/ToastContext';
+import { useAuth } from './context/AuthContext';
+import { LoginModal } from './components/LoginModal';
+import { getUserAudits, saveUserAudit } from './firebase';
 import { ShieldCheck, AlertCircle, Sparkles, Globe, Terminal, ArrowRight } from 'lucide-react';
 
 const STORAGE_KEY = 'omniscribe_audit_history_v1';
@@ -28,7 +31,9 @@ export default function App() {
   const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
   const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
 
-  // Load audit history on mount
+  const { user } = useAuth();
+
+  // Load audit history on mount (from local storage)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -43,10 +48,44 @@ export default function App() {
     }
   }, []);
 
-  // Save audit history to local storage
+  // Sync with Firestore when user logs in
+  useEffect(() => {
+    if (!user) return;
+    let isCancelled = false;
+
+    getUserAudits(user.uid)
+      .then((cloudAudits) => {
+        if (isCancelled || !cloudAudits || cloudAudits.length === 0) return;
+        setHistory((prev) => {
+          const map = new Map<string, AuditResponse>();
+          // Cloud records take precedence for consistency
+          cloudAudits.forEach((a) => map.set(a.audit_id, a));
+          // Merge local records if not present in cloud
+          prev.forEach((a) => {
+            if (!map.has(a.audit_id)) {
+              map.set(a.audit_id, a);
+            }
+          });
+          const merged = Array.from(map.values()).slice(0, 30);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
+      })
+      .catch((err) => {
+        console.warn('Could not load user audits from Firestore:', err);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [user]);
+
+  // Save audit history to local storage & cloud if authenticated
   const saveAuditToHistory = (audit: AuditResponse) => {
     setHistory((prev) => {
-      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 20);
+      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 30);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {
@@ -54,6 +93,10 @@ export default function App() {
       }
       return updated;
     });
+
+    if (user) {
+      saveUserAudit(user.uid, audit);
+    }
   };
 
   const handleClearHistory = () => {
@@ -293,6 +336,8 @@ export default function App() {
           setCurrentAudit(null);
         }}
       />
+
+      <LoginModal />
     </div>
   );
 }

@@ -1,5 +1,20 @@
-import React from 'react';
-import { ShieldCheck, BookOpen, History, Cpu, FileCode2, Globe, Hash } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  ShieldCheck,
+  BookOpen,
+  History,
+  Cpu,
+  FileCode2,
+  Globe,
+  Hash,
+  LogIn,
+  LogOut,
+  User,
+  ChevronDown,
+  Cloud,
+  CheckCircle2,
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   onOpenRules: () => void;
@@ -20,6 +35,21 @@ export const Header: React.FC<HeaderProps> = ({
   selectedCountry,
   onSelectCountry,
 }) => {
+  const { user, loading, openLoginModal, logout, roleTitle } = useAuth();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
     <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -83,25 +113,25 @@ export const Header: React.FC<HeaderProps> = ({
             title="Harmonized Tariff (HS) Code Lookup"
           >
             <Hash className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">HS Code Lookup</span>
+            <span className="hidden sm:inline">HS Lookup</span>
           </button>
 
           {/* Rules Explorer Button */}
           <button
             onClick={onOpenRules}
             type="button"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-slate-200 transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-slate-200 transition-colors shadow-sm cursor-pointer"
             title="Customs Rules & Frameworks"
           >
             <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-            <span className="hidden sm:inline">Customs Rules</span>
+            <span className="hidden sm:inline">Rules</span>
           </button>
 
           {/* History Button */}
           <button
             onClick={onOpenHistory}
             type="button"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-slate-200 transition-colors relative shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-medium text-slate-200 transition-colors relative shadow-sm cursor-pointer"
             title="Audit History"
           >
             <History className="w-3.5 h-3.5 text-indigo-400" />
@@ -117,12 +147,94 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenArchitecture}
             type="button"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-xs font-medium text-emerald-300 transition-colors"
-            title="FastAPI & Cloud Run Architecture"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-xs font-medium text-emerald-300 transition-colors cursor-pointer"
+            title="Architecture & Specs"
           >
             <FileCode2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden md:inline">Architecture</span>
+            <span className="hidden md:inline">Arch</span>
           </button>
+
+          {/* Auth Section */}
+          <div className="relative pl-1 border-l border-slate-800" ref={menuRef}>
+            {loading ? (
+              <div className="w-8 h-8 rounded-lg bg-slate-800 animate-pulse" />
+            ) : user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 p-1 pl-2 pr-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-800 border border-slate-700/80 text-xs text-slate-200 transition-colors cursor-pointer group"
+                  aria-expanded={isUserMenuOpen}
+                >
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt={user.displayName || 'Auditor'}
+                      className="w-6 h-6 rounded-lg object-cover border border-emerald-400/30"
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-xs">
+                      {(user.displayName || user.email || 'A').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="font-medium max-w-[90px] sm:max-w-[120px] truncate text-white">
+                    {user.displayName?.split(' ')[0] || 'Auditor'}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-transform" />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-2 z-50 text-xs animate-in fade-in zoom-in-95">
+                    <div className="p-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-semibold text-white truncate">
+                          {user.displayName || 'Customs Inspector'}
+                        </span>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                      <div className="mt-2 flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 text-[10px] font-mono">
+                        <Cloud className="w-3 h-3 text-emerald-400" />
+                        <span>Cloud Firestore Sync</span>
+                      </div>
+                    </div>
+
+                    <div className="p-1.5">
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          openLoginModal();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer text-left"
+                      >
+                        <User className="w-4 h-4 text-slate-400" />
+                        <span>Auditor Profile & Badges</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          logout();
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 transition-colors cursor-pointer text-left mt-1"
+                      >
+                        <LogOut className="w-4 h-4 text-rose-400" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={openLoginModal}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs transition-all shadow-md shadow-emerald-900/30 cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </header>

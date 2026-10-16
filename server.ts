@@ -494,8 +494,72 @@ function generateDeterministicAudit(
   }
 }
 
+// Normalizes and guarantees complete schema compliance for all audit responses
+function normalizeAuditResponse(
+  parsed: any,
+  destinationCountry: string,
+  frameworkAgency: string,
+  documentType: string,
+  fileName?: string
+): any {
+  if (!parsed || typeof parsed !== 'object') {
+    parsed = {};
+  }
+
+  // Ensure audit metadata
+  parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
+  parsed.destination_country = destinationCountry;
+  parsed.regulatory_framework = frameworkAgency;
+  parsed.timestamp = parsed.timestamp || new Date().toISOString();
+
+  if (fileName) {
+    parsed.document_file_name = fileName;
+  }
+
+  // Normalize extracted_entities
+  if (!parsed.extracted_entities && parsed.entities) {
+    parsed.extracted_entities = parsed.entities;
+  }
+  if (!parsed.extracted_entities || typeof parsed.extracted_entities !== 'object') {
+    parsed.extracted_entities = {};
+  }
+
+  const ee = parsed.extracted_entities;
+  ee.document_type = ee.document_type || documentType || 'Commercial Invoice';
+  ee.document_number = ee.document_number || `DOC-${destinationCountry}-${Date.now().toString().slice(-6)}`;
+  ee.document_date = ee.document_date || new Date().toISOString().split('T')[0];
+  ee.shipper_name = ee.shipper_name || 'Exporter of Record';
+  ee.shipper_address = ee.shipper_address || 'Origin Customs Zone';
+  ee.shipper_country = ee.shipper_country || 'Origin';
+  ee.consignee_name = ee.consignee_name || 'Importer of Record';
+  ee.consignee_address = ee.consignee_address || 'Destination Customs Territory';
+  ee.consignee_country = ee.consignee_country || destinationCountry;
+  ee.mode_of_transport = ee.mode_of_transport || 'Freight Cargo';
+  ee.port_of_loading = ee.port_of_loading || 'POL Port';
+  ee.port_of_discharge = ee.port_of_discharge || 'POD Port';
+  ee.incoterms = ee.incoterms || 'CIF';
+  ee.currency = ee.currency || 'USD';
+  ee.total_declared_value = Number(ee.total_declared_value || 0);
+  ee.items = Array.isArray(ee.items) ? ee.items : [];
+
+  // Normalize status, score, arrays
+  parsed.audit_status = parsed.audit_status || 'FLAGGED';
+  parsed.risk_score = typeof parsed.risk_score === 'number' ? parsed.risk_score : 45;
+  parsed.risk_level =
+    parsed.risk_level ||
+    (parsed.risk_score > 69 ? 'CRITICAL' : parsed.risk_score > 25 ? 'MODERATE' : 'LOW');
+  parsed.compliance_discrepancies = Array.isArray(parsed.compliance_discrepancies)
+    ? parsed.compliance_discrepancies
+    : [];
+  parsed.recommended_actions = Array.isArray(parsed.recommended_actions)
+    ? parsed.recommended_actions
+    : [];
+
+  return parsed;
+}
+
 // Main API: Autonomous Compliance Audit
-app.post('/api/audit', upload.single('file'), async (req, res) => {
+app.post('/api/audit', upload.single('file') as any, async (req: any, res: any) => {
   try {
     const destinationCountry = (req.body.destinationCountry || 'USA').toString().toUpperCase();
     const documentType = (req.body.documentType || 'Commercial Invoice').toString();
@@ -597,21 +661,18 @@ Return pure, strictly valid JSON matching this schema.
 
       const responseText = response.text?.trim() || '{}';
       let parsed = JSON.parse(responseText);
-
-      // Enhance with metadata if missing
-      parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
-      parsed.destination_country = destinationCountry;
-      parsed.regulatory_framework = frameworkInfo.agency;
-      parsed.timestamp = new Date().toISOString();
-      if (file?.originalname) {
-        parsed.document_file_name = file.originalname;
-      }
-
-      return res.json(parsed);
+      const normalized = normalizeAuditResponse(
+        parsed,
+        destinationCountry,
+        frameworkInfo.agency,
+        documentType,
+        file?.originalname
+      );
+      return res.json(normalized);
     } catch (modelError: any) {
       console.error('Error in Gemini generateContent, falling back to deterministic compliance engine:', modelError);
       const fallback = generateDeterministicAudit(destinationCountry, rawText || file?.originalname || '');
-      return res.json(fallback);
+      return res.json(normalizeAuditResponse(fallback, destinationCountry, frameworkInfo.agency, documentType, file?.originalname));
     }
   } catch (err: any) {
     console.error('Error processing audit request:', err);
@@ -630,7 +691,7 @@ app.post('/api/audit-json', async (req, res) => {
 
     if (!process.env.GEMINI_API_KEY) {
       const result = generateDeterministicAudit(destinationCountry, rawText || fileName || '');
-      return res.json(result);
+      return res.json(normalizeAuditResponse(result, destinationCountry, frameworkInfo.agency, documentType, fileName));
     }
 
     try {
@@ -655,7 +716,9 @@ app.post('/api/audit-json', async (req, res) => {
         config: {
           systemInstruction: `You are OmniScribe, an Autonomous Regulatory Compliance and Continuous Audit Agent for Cross-Border Logistics.
 Destination: ${destinationCountry} (${frameworkInfo.agency}).
-Extract all entities, verify HS codes, examine DG / dual-use / restrictions, calculate risk score 0-100 and audit_status (APPROVED|FLAGGED|REJECTED).
+Extract all entities into extracted_entities (document_number, document_date, shipper_name, shipper_address, shipper_country, consignee_name, consignee_address, consignee_country, mode_of_transport, port_of_loading, port_of_discharge, incoterms, currency, total_declared_value, items).
+Verify HS codes, examine DG / dual-use / restrictions, calculate risk score 0-100 and audit_status (APPROVED|FLAGGED|REJECTED).
+Include compliance_discrepancies, recommended_actions, and agent_reasoning_trace.
 Return valid JSON.`,
           responseMimeType: 'application/json',
           temperature: 0.1,
@@ -663,15 +726,18 @@ Return valid JSON.`,
       });
 
       const parsed = JSON.parse(response.text?.trim() || '{}');
-      parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
-      parsed.destination_country = destinationCountry;
-      parsed.regulatory_framework = frameworkInfo.agency;
-      parsed.timestamp = new Date().toISOString();
-      return res.json(parsed);
+      const normalized = normalizeAuditResponse(
+        parsed,
+        destinationCountry,
+        frameworkInfo.agency,
+        documentType,
+        fileName
+      );
+      return res.json(normalized);
     } catch (e) {
       console.warn('Gemini JSON route fallback triggered:', e);
       const fallback = generateDeterministicAudit(destinationCountry, rawText || fileName || '');
-      return res.json(fallback);
+      return res.json(normalizeAuditResponse(fallback, destinationCountry, frameworkInfo.agency, documentType, fileName));
     }
   } catch (err: any) {
     res.status(500).json({ error: 'Audit failed', message: err.message });

@@ -9,12 +9,14 @@ import { DutyTariffCard } from './DutyTariffCard';
 import { AgentThoughtTrace } from './AgentThoughtTrace';
 import { generateAuditPDF } from '../utils/pdfGenerator';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import {
   Download,
   Share2,
   CheckCircle2,
   AlertTriangle,
   ShieldAlert,
+  ShieldCheck,
   FileText,
   FileDown,
   Copy,
@@ -26,6 +28,7 @@ import {
   Calendar,
   Layers,
   Activity,
+  UserCheck,
 } from 'lucide-react';
 
 interface AuditReportViewProps {
@@ -42,9 +45,30 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
   onSelectAudit,
 }) => {
   const toast = useToast();
+  const { user, openLoginModal } = useAuth();
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
+
+  // Safe fallback for extracted_entities to prevent undefined access crashes
+  const entities = audit.extracted_entities || {
+    document_type: 'Customs Entry',
+    document_number: 'N/A',
+    document_date: new Date().toISOString().split('T')[0],
+    shipper_name: 'Exporter of Record',
+    shipper_address: 'Declared Origin',
+    shipper_country: 'N/A',
+    consignee_name: 'Importer of Record',
+    consignee_address: 'Declared Destination',
+    consignee_country: audit.destination_country || 'USA',
+    mode_of_transport: 'Freight Cargo',
+    port_of_loading: 'N/A',
+    port_of_discharge: 'N/A',
+    incoterms: 'FOB',
+    currency: 'USD',
+    total_declared_value: 0,
+    items: [],
+  };
 
   // Status badge styling
   let statusBadgeBg = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
@@ -95,19 +119,19 @@ FINAL AUDIT STATUS: [ ${audit.audit_status} ]
 RISK SCORE:         ${audit.risk_score} / 100 (${audit.risk_level} RISK)
 
 1. SHIPMENT DOSSIER:
-- Shipper:          ${audit.extracted_entities.shipper_name} (${audit.extracted_entities.shipper_country})
-- Consignee:        ${audit.extracted_entities.consignee_name} (${audit.extracted_entities.consignee_country})
-- Document No:      ${audit.extracted_entities.document_number}
-- Declared Value:   ${audit.extracted_entities.currency} ${Number(audit.extracted_entities.total_declared_value || 0).toLocaleString()}
-- Incoterms:        ${audit.extracted_entities.incoterms}
-- Transport Mode:   ${audit.extracted_entities.mode_of_transport}
-- POL / POD:        ${audit.extracted_entities.port_of_loading} -> ${audit.extracted_entities.port_of_discharge}
+- Shipper:          ${entities.shipper_name || 'N/A'} (${entities.shipper_country || 'N/A'})
+- Consignee:        ${entities.consignee_name || 'N/A'} (${entities.consignee_country || 'N/A'})
+- Document No:      ${entities.document_number || 'N/A'}
+- Declared Value:   ${entities.currency || 'USD'} ${Number(entities.total_declared_value || 0).toLocaleString()}
+- Incoterms:        ${entities.incoterms || 'FOB'}
+- Transport Mode:   ${entities.mode_of_transport || 'N/A'}
+- POL / POD:        ${entities.port_of_loading || 'N/A'} -> ${entities.port_of_discharge || 'N/A'}
 
-2. COMPLIANCE DISCREPANCIES (${audit.compliance_discrepancies.length}):
-${audit.compliance_discrepancies.map((d, i) => `  [${i + 1}] ${d}`).join('\n') || '  None detected. Clean regulatory filing.'}
+2. COMPLIANCE DISCREPANCIES (${audit.compliance_discrepancies?.length || 0}):
+${audit.compliance_discrepancies?.map((d, i) => `  [${i + 1}] ${d}`).join('\n') || '  None detected. Clean regulatory filing.'}
 
-3. RECOMMENDED ACTIONS (${audit.recommended_actions.length}):
-${audit.recommended_actions.map((a, i) => `  [${i + 1}] ${a}`).join('\n') || '  Proceed with automated release.'}
+3. RECOMMENDED ACTIONS (${audit.recommended_actions?.length || 0}):
+${audit.recommended_actions?.map((a, i) => `  [${i + 1}] ${a}`).join('\n') || '  Proceed with automated release.'}
 
 4. TARIFF & PGA SUMMARY:
 - Estimated Duty:   ${audit.duty_tariff_analysis?.estimated_duty_rate || '0.0%'}
@@ -133,7 +157,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
   // Copy Summary to clipboard
   const handleCopySummary = () => {
-    const brief = `[OmniScribe Audit] Status: ${audit.audit_status} | Risk: ${audit.risk_score}/100 | Ref: ${audit.audit_id} | Dest: ${audit.destination_country} | Doc: ${audit.extracted_entities.document_number}`;
+    const brief = `[OmniScribe Audit] Status: ${audit.audit_status} | Risk: ${audit.risk_score}/100 | Ref: ${audit.audit_id} | Dest: ${audit.destination_country} | Doc: ${entities.document_number || 'N/A'}`;
     navigator.clipboard.writeText(brief);
     setCopied(true);
     toast.info('Summary Copied to Clipboard', `Reference: ${audit.audit_id} (${audit.audit_status})`);
@@ -144,8 +168,20 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
   const handleDownloadPDF = () => {
     setIsGeneratingPdf(true);
     try {
-      generateAuditPDF(audit);
-      toast.success('PDF Report Generated', `Downloaded official report OmniScribe_Audit_Report_${audit.audit_id}.pdf`);
+      generateAuditPDF(
+        audit,
+        user
+          ? {
+              name: user.displayName,
+              email: user.email,
+              uid: user.uid,
+            }
+          : undefined
+      );
+      toast.success(
+        'Customs Audit PDF Exported',
+        `Official verification dossier saved as OmniScribe_Customs_Audit_${audit.audit_id}.pdf`
+      );
     } catch (err: any) {
       console.error('Failed to generate PDF summary:', err);
       toast.error('PDF Generation Error', 'An unexpected error occurred while compiling the PDF dossier.');
@@ -203,10 +239,32 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
                 {new Date(audit.timestamp).toLocaleDateString()} {new Date(audit.timestamp).toLocaleTimeString()}
               </span>
               <span>•</span>
-              <span>Doc No: <strong className="text-slate-200">{audit.extracted_entities.document_number}</strong></span>
+              <span>Doc No: <strong className="text-slate-200">{entities.document_number || 'N/A'}</strong></span>
               <span>•</span>
-              <span>Total Value: <strong className="text-emerald-400">${Number(audit.extracted_entities.total_declared_value || 0).toLocaleString()} {audit.extracted_entities.currency}</strong></span>
+              <span>Total Value: <strong className="text-emerald-400">${Number(entities.total_declared_value || 0).toLocaleString()} {entities.currency || 'USD'}</strong></span>
             </div>
+
+            {/* Authenticated Auditor Stamp */}
+            {user ? (
+              <div className="flex items-center gap-2 pt-1">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-[11px] shadow-sm">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Certified by Inspector: <strong>{user.displayName || user.email}</strong></span>
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">• Synced to Firestore</span>
+              </div>
+            ) : (
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={openLoginModal}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400/90 hover:text-emerald-300 transition-colors font-mono cursor-pointer"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Sign in as Customs Auditor to digitally certify this clearance slip</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -217,10 +275,10 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               type="button"
               disabled={isGeneratingPdf}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer transform hover:-translate-y-0.5"
-              title="Download official formatted customs inspection PDF report"
+              title="Export audit report to PDF for offline record-keeping and sharing with customs officers"
             >
               <FileDown className="w-4 h-4 text-emerald-100" />
-              <span>{isGeneratingPdf ? 'Generating PDF...' : 'Download Formatted PDF'}</span>
+              <span>{isGeneratingPdf ? 'Generating PDF...' : 'Export Official PDF'}</span>
             </button>
 
             <button
@@ -323,7 +381,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           }`}
         >
           <FileText className="w-3.5 h-3.5 text-cyan-400" />
-          Extracted Entities ({audit.extracted_entities?.items?.length || 0} Items)
+          Extracted Entities ({entities.items?.length || 0} Items)
         </button>
         <button
           onClick={() => setActiveTab('discrepancies')}
@@ -352,14 +410,14 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
       {/* Tab Contents */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          <ExtractedEntitiesCard entities={audit.extracted_entities} />
+          <ExtractedEntitiesCard entities={entities} />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <DiscrepanciesCard
-              discrepancies={audit.compliance_discrepancies}
+              discrepancies={audit.compliance_discrepancies || []}
               discrepancyDetails={audit.discrepancy_details}
             />
             <ActionItemsCard
-              actions={audit.recommended_actions}
+              actions={audit.recommended_actions || []}
               actionDetails={audit.action_details}
             />
           </div>
@@ -380,7 +438,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
       )}
 
       {activeTab === 'entities' && (
-        <ExtractedEntitiesCard entities={audit.extracted_entities} />
+        <ExtractedEntitiesCard entities={entities} />
       )}
 
       {activeTab === 'discrepancies' && (
