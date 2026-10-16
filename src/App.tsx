@@ -6,6 +6,7 @@ import { AuditPipelineAnimation } from './components/AuditPipelineAnimation';
 import { RegulatoryRulesModal } from './components/RegulatoryRulesModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { SystemArchitectureModal } from './components/SystemArchitectureModal';
+import { HSCodeLookupModal } from './components/HSCodeLookupModal';
 import { AuditResponse } from './types/compliance';
 import { useToast } from './context/ToastContext';
 import { ShieldCheck, AlertCircle, Sparkles, Globe, Terminal, ArrowRight } from 'lucide-react';
@@ -24,6 +25,8 @@ export default function App() {
   const [isRulesOpen, setIsRulesOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [isArchitectureOpen, setIsArchitectureOpen] = useState<boolean>(false);
+  const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
+  const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
 
   // Load audit history on mount
   useEffect(() => {
@@ -155,6 +158,7 @@ export default function App() {
         onOpenRules={() => setIsRulesOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenArchitecture={() => setIsArchitectureOpen(true)}
+        onOpenHSLookup={() => setIsHSLookupOpen(true)}
         historyCount={history.length}
         selectedCountry={selectedCountry}
         onSelectCountry={setSelectedCountry}
@@ -237,6 +241,8 @@ export default function App() {
               isLoading={isLoading}
               selectedCountry={selectedCountry}
               onSelectCountry={setSelectedCountry}
+              onOpenHSLookup={() => setIsHSLookupOpen(true)}
+              injectedHSCode={injectedHSCode}
             />
           </div>
         )}
@@ -277,6 +283,15 @@ export default function App() {
       <SystemArchitectureModal
         isOpen={isArchitectureOpen}
         onClose={() => setIsArchitectureOpen(false)}
+      />
+
+      <HSCodeLookupModal
+        isOpen={isHSLookupOpen}
+        onClose={() => setIsHSLookupOpen(false)}
+        onApplyCode={(code, title) => {
+          setInjectedHSCode({ code, title, timestamp: Date.now() });
+          setCurrentAudit(null);
+        }}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, ChangeEvent, DragEvent } from 'react';
-import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, RefreshCw, Eye, FileSpreadsheet } from 'lucide-react';
+import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, RefreshCw, Eye, FileSpreadsheet, Hash } from 'lucide-react';
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 import { SampleDocument } from '../types/compliance';
 import { FilePreviewModal } from './FilePreviewModal';
@@ -15,6 +15,8 @@ interface DocumentUploadZoneProps {
   isLoading: boolean;
   selectedCountry: string;
   onSelectCountry: (c: string) => void;
+  onOpenHSLookup?: () => void;
+  injectedHSCode?: { code: string; title: string; timestamp: number } | null;
 }
 
 const DESTINATIONS = [
@@ -41,6 +43,8 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   isLoading,
   selectedCountry,
   onSelectCountry,
+  onOpenHSLookup,
+  injectedHSCode,
 }) => {
   const toast = useToast();
   const [documentType, setDocumentType] = useState('Commercial Invoice');
@@ -53,6 +57,15 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   const [activeSampleId, setActiveSampleId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-inject selected HS Code into the manifest text
+  useEffect(() => {
+    if (injectedHSCode) {
+      const newLine = `\nItem: ${injectedHSCode.title}\nHS Code: ${injectedHSCode.code}\nClassification Status: Verified WCO 2026 Heading\n`;
+      setRawText((prev) => (prev.trim() ? `${prev.trim()}\n${newLine}` : newLine.trim()));
+      setActiveTab('text');
+    }
+  }, [injectedHSCode]);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -178,32 +191,46 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
           </p>
         </div>
 
-        {/* Tab switch */}
-        <div className="flex rounded-lg bg-slate-950/80 p-0.5 border border-slate-800 text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('upload')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-all ${
-              activeTab === 'upload'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileUp className="w-3.5 h-3.5" />
-            File Ingestion
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('text')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-all ${
-              activeTab === 'text'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            Text / Samples ({SAMPLE_DOCUMENTS.length})
-          </button>
+        <div className="flex items-center gap-2">
+          {onOpenHSLookup && (
+            <button
+              type="button"
+              onClick={onOpenHSLookup}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 transition-colors shadow-sm cursor-pointer"
+              title="Search International Commodity Codes"
+            >
+              <Hash className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">HS Code Helper</span>
+            </button>
+          )}
+
+          {/* Tab switch */}
+          <div className="flex rounded-lg bg-slate-950/80 p-0.5 border border-slate-800 text-xs">
+            <button
+              type="button"
+              onClick={() => setActiveTab('upload')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-all ${
+                activeTab === 'upload'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileUp className="w-3.5 h-3.5" />
+              File Ingestion
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('text')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-all ${
+                activeTab === 'text'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Text / Samples ({SAMPLE_DOCUMENTS.length})
+            </button>
+          </div>
         </div>
       </div>
 
@@ -425,6 +452,17 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                 Document Text Content / OCR Stream
               </label>
               <div className="flex items-center gap-2">
+                {onOpenHSLookup && (
+                  <button
+                    type="button"
+                    onClick={onOpenHSLookup}
+                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors font-mono font-medium px-2 py-0.5 rounded bg-slate-800 border border-slate-700 cursor-pointer"
+                    title="Search & inject HS codes"
+                  >
+                    <Hash className="w-3 h-3" />
+                    <span>Lookup HS Codes</span>
+                  </button>
+                )}
                 {rawText && (
                   <button
                     type="button"
@@ -467,6 +505,18 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
+            {onOpenHSLookup && (
+              <button
+                type="button"
+                onClick={onOpenHSLookup}
+                className="hidden md:flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-slate-700 transition-all cursor-pointer shadow-sm hover:border-amber-500/40"
+                title="Search International Commodity Codes before Audit"
+              >
+                <Hash className="w-4 h-4 text-amber-400" />
+                <span>HS Code Lookup</span>
+              </button>
+            )}
+
             {(file || rawText.trim()) && (
               <button
                 type="button"

@@ -1,10 +1,11 @@
 import React from 'react';
-import { ShieldCheck, BookOpen, History, Cpu, FileCode2, Globe } from 'lucide-react';
+import { ShieldCheck, BookOpen, History, Cpu, FileCode2, Globe, Hash } from 'lucide-react';
 
 interface HeaderProps {
   onOpenRules: () => void;
   onOpenHistory: () => void;
   onOpenArchitecture: () => void;
+  onOpenHSLookup: () => void;
   historyCount: number;
   selectedCountry: string;
   onSelectCountry: (c: string) => void;
@@ -14,6 +15,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenRules,
   onOpenHistory,
   onOpenArchitecture,
+  onOpenHSLookup,
   historyCount,
   selectedCountry,
   onSelectCountry,
@@ -72,6 +74,17 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-400">Model:</span>
             <span className="text-cyan-300 font-medium">gemini-3.8-flash</span>
           </div>
+
+          {/* HS Code Lookup Helper Button */}
+          <button
+            onClick={onOpenHSLookup}
+            type="button"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-semibold text-amber-300 transition-colors shadow-sm cursor-pointer"
+            title="Harmonized Tariff (HS) Code Lookup"
+          >
+            <Hash className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">HS Code Lookup</span>
+          </button>
 
           {/* Rules Explorer Button */}
           <button
