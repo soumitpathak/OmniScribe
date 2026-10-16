@@ -1,7 +1,8 @@
-import React, { useState, useRef, ChangeEvent, DragEvent } from 'react';
-import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, RefreshCw, Eye } from 'lucide-react';
+import React, { useState, useRef, useEffect, ChangeEvent, DragEvent } from 'react';
+import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, RefreshCw, Eye, FileSpreadsheet } from 'lucide-react';
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 import { SampleDocument } from '../types/compliance';
+import { FilePreviewModal } from './FilePreviewModal';
 
 interface DocumentUploadZoneProps {
   onAudit: (data: {
@@ -42,6 +43,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
 }) => {
   const [documentType, setDocumentType] = useState('Commercial Invoice');
   const [file, setFile] = useState<File | null>(null);
+  const [fileThumbnail, setFileThumbnail] = useState<string | null>(null);
   const [rawText, setRawText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'upload' | 'text'>('upload');
@@ -77,6 +79,16 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   const handleSelectedFile = (selectedFile: File) => {
     setFile(selectedFile);
     setActiveSampleId(null);
+
+    // Create thumbnail if image
+    if (selectedFile.type.startsWith('image/')) {
+      if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
+      setFileThumbnail(URL.createObjectURL(selectedFile));
+    } else {
+      if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
+      setFileThumbnail(null);
+    }
+
     // If text file, preview its text
     if (selectedFile.type.includes('text') || selectedFile.name.endsWith('.txt') || selectedFile.name.endsWith('.csv')) {
       const reader = new FileReader();
@@ -92,11 +104,15 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     onSelectCountry(sample.destination_country);
     setDocumentType(sample.document_type);
     setRawText(sample.sample_text);
+    if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
+    setFileThumbnail(null);
     setFile(null);
     setActiveTab('text');
   };
 
   const handleClear = () => {
+    if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
+    setFileThumbnail(null);
     setFile(null);
     setRawText('');
     setActiveSampleId(null);
@@ -309,24 +325,62 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div className="truncate">
-                    <p className="text-sm font-medium text-white truncate">{file.name}</p>
-                    <p className="text-xs text-slate-400 font-mono">
+              <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/40 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                  {/* Thumbnail if image, else specialized document icon */}
+                  {fileThumbnail ? (
+                    <div
+                      onClick={() => setPreviewOpen(true)}
+                      className="w-12 h-12 rounded-lg border border-emerald-500/40 overflow-hidden bg-slate-900 shrink-0 cursor-pointer hover:opacity-90 transition-opacity relative group"
+                      title="Click to preview image"
+                    >
+                      <img src={fileThumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Eye className="w-4 h-4 text-white" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => setPreviewOpen(true)}
+                      className="w-12 h-12 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 cursor-pointer hover:bg-emerald-500/20 transition-colors"
+                      title="Click to preview document"
+                    >
+                      {file.type === 'application/pdf' || file.name.endsWith('.pdf') ? (
+                        <FileText className="w-6 h-6 text-rose-400" />
+                      ) : (
+                        <FileText className="w-6 h-6 text-emerald-400" />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="truncate min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-white truncate">{file.name}</p>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                        {file.type === 'application/pdf' || file.name.endsWith('.pdf') ? 'PDF' : file.type.startsWith('image/') ? 'Image' : 'Text'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">
                       {(file.size / 1024).toFixed(1)} KB • {file.type || 'Customs document'}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-300 border border-slate-700 transition-all cursor-pointer shadow-sm hover:border-emerald-500/40"
+                    title="Preview Document before Audit"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Preview Document</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleClear}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
                     title="Remove File"
                   >
                     <X className="w-4 h-4" />
@@ -344,15 +398,27 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
               <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
                 Document Text Content / OCR Stream
               </label>
-              {rawText && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="text-xs text-rose-400 hover:text-rose-300 transition-colors font-mono"
-                >
-                  Clear Content
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {rawText && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
+                    className="flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-mono font-medium px-2 py-0.5 rounded bg-slate-800 border border-slate-700 cursor-pointer"
+                  >
+                    <Eye className="w-3 h-3" />
+                    <span>Preview Full Text</span>
+                  </button>
+                )}
+                {rawText && (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="text-xs text-rose-400 hover:text-rose-300 transition-colors font-mono cursor-pointer"
+                  >
+                    Clear Content
+                  </button>
+                )}
+              </div>
             </div>
             <textarea
               value={rawText}
@@ -374,29 +440,61 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
             <span>GenAI Autonomous Audit Loop</span>
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading || (!file && !rawText.trim())}
-            className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm tracking-wide transition-all shadow-lg flex items-center justify-center gap-2 ${
-              isLoading || (!file && !rawText.trim())
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25 cursor-pointer transform hover:-translate-y-0.5'
-            }`}
-          >
-            {isLoading ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                <span>Running Autonomous Audit Loop...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 text-emerald-200" />
-                <span>Initiate Autonomous Compliance Audit</span>
-              </>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {(file || rawText.trim()) && (
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="hidden sm:flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all cursor-pointer shadow-sm hover:border-emerald-500/40"
+              >
+                <Eye className="w-4 h-4 text-emerald-400" />
+                <span>Preview Document</span>
+              </button>
             )}
-          </button>
+
+            <button
+              type="submit"
+              disabled={isLoading || (!file && !rawText.trim())}
+              className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm tracking-wide transition-all shadow-lg flex items-center justify-center gap-2 ${
+                isLoading || (!file && !rawText.trim())
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25 cursor-pointer transform hover:-translate-y-0.5'
+              }`}
+            >
+              {isLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span>Running Autonomous Audit Loop...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-emerald-200" />
+                  <span>Initiate Autonomous Compliance Audit</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
+
+      {/* File Preview Modal */}
+      <FilePreviewModal
+        isOpen={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        file={file}
+        rawText={rawText}
+        documentType={documentType}
+        destinationCountry={selectedCountry}
+        onTriggerAudit={() => {
+          onAudit({
+            file,
+            rawText,
+            destinationCountry: selectedCountry,
+            documentType,
+          });
+        }}
+        isLoading={isLoading}
+      />
     </div>
   );
 };
