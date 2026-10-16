@@ -3,6 +3,7 @@ import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, Refre
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 import { SampleDocument } from '../types/compliance';
 import { FilePreviewModal } from './FilePreviewModal';
+import { useToast } from '../context/ToastContext';
 
 interface DocumentUploadZoneProps {
   onAudit: (data: {
@@ -41,6 +42,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   selectedCountry,
   onSelectCountry,
 }) => {
+  const toast = useToast();
   const [documentType, setDocumentType] = useState('Commercial Invoice');
   const [file, setFile] = useState<File | null>(null);
   const [fileThumbnail, setFileThumbnail] = useState<string | null>(null);
@@ -77,11 +79,24 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   };
 
   const handleSelectedFile = (selectedFile: File) => {
+    // Validate file size (25MB limit)
+    if (selectedFile.size > 25 * 1024 * 1024) {
+      toast.error(
+        'Upload Rejected: File Size Exceeded',
+        `File "${selectedFile.name}" is ${(selectedFile.size / (1024 * 1024)).toFixed(1)}MB. The maximum allowable limit is 25MB.`
+      );
+      return;
+    }
+
     setFile(selectedFile);
     setActiveSampleId(null);
 
+    const isImg = selectedFile.type.startsWith('image/');
+    const isPdf = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
+    const kind = isImg ? 'Image invoice' : isPdf ? 'PDF customs document' : 'Logistics manifest';
+
     // Create thumbnail if image
-    if (selectedFile.type.startsWith('image/')) {
+    if (isImg) {
       if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
       setFileThumbnail(URL.createObjectURL(selectedFile));
     } else {
@@ -97,6 +112,12 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
       };
       reader.readAsText(selectedFile);
     }
+
+    // Trigger toast notification
+    toast.success(
+      'Document Successfully Uploaded',
+      `"${selectedFile.name}" (${(selectedFile.size / 1024).toFixed(1)} KB ${kind}) ingested. Ready for regulatory audit.`
+    );
   };
 
   const handleLoadSample = (sample: SampleDocument) => {
@@ -108,6 +129,11 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     setFileThumbnail(null);
     setFile(null);
     setActiveTab('text');
+
+    toast.info(
+      'Test Scenario Ingested',
+      `Loaded "${sample.title}" for ${sample.destination_country} regulatory evaluation.`
+    );
   };
 
   const handleClear = () => {

@@ -8,6 +8,7 @@ import { ActionItemsCard } from './ActionItemsCard';
 import { DutyTariffCard } from './DutyTariffCard';
 import { AgentThoughtTrace } from './AgentThoughtTrace';
 import { generateAuditPDF } from '../utils/pdfGenerator';
+import { useToast } from '../context/ToastContext';
 import {
   Download,
   Share2,
@@ -40,6 +41,7 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
   history = [],
   onSelectAudit,
 }) => {
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
@@ -64,18 +66,24 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
 
   // Export JSON handler
   const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(audit, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `OmniScribe_Audit_${audit.audit_id}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    try {
+      const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(audit, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', `OmniScribe_Audit_${audit.audit_id}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      toast.success('JSON Export Downloaded', `Audit dossier saved as OmniScribe_Audit_${audit.audit_id}.json`);
+    } catch (e: any) {
+      toast.error('Export Failed', 'Could not export audit JSON data.');
+    }
   };
 
   // Export Customs Clearance Slip / Summary
   const handleExportSummary = () => {
-    const summaryText = `================================================================================
+    try {
+      const summaryText = `================================================================================
 OMNISCRIBE - AUTONOMOUS LOGISTICS REGULATORY COMPLIANCE REPORT
 ================================================================================
 AUDIT REFERENCE ID: ${audit.audit_id}
@@ -110,13 +118,17 @@ Generated autonomously by OmniScribe AI Studio Logistics Compliance Engine
 Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 ================================================================================
 `;
-    const dataStr = 'data:text/plain;charset=utf-8,' + encodeURIComponent(summaryText);
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `OmniScribe_Customs_Clearance_${audit.audit_id}.txt`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+      const dataStr = 'data:text/plain;charset=utf-8,' + encodeURIComponent(summaryText);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', dataStr);
+      downloadAnchor.setAttribute('download', `OmniScribe_Customs_Clearance_${audit.audit_id}.txt`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      toast.success('Customs Clearance Slip Saved', `Clearance certificate saved as OmniScribe_Customs_Clearance_${audit.audit_id}.txt`);
+    } catch (e: any) {
+      toast.error('Download Failed', 'Could not save customs clearance text slip.');
+    }
   };
 
   // Copy Summary to clipboard
@@ -124,6 +136,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
     const brief = `[OmniScribe Audit] Status: ${audit.audit_status} | Risk: ${audit.risk_score}/100 | Ref: ${audit.audit_id} | Dest: ${audit.destination_country} | Doc: ${audit.extracted_entities.document_number}`;
     navigator.clipboard.writeText(brief);
     setCopied(true);
+    toast.info('Summary Copied to Clipboard', `Reference: ${audit.audit_id} (${audit.audit_status})`);
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -132,8 +145,10 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
     setIsGeneratingPdf(true);
     try {
       generateAuditPDF(audit);
-    } catch (err) {
+      toast.success('PDF Report Generated', `Downloaded official report OmniScribe_Audit_Report_${audit.audit_id}.pdf`);
+    } catch (err: any) {
       console.error('Failed to generate PDF summary:', err);
+      toast.error('PDF Generation Error', 'An unexpected error occurred while compiling the PDF dossier.');
     } finally {
       setIsGeneratingPdf(false);
     }

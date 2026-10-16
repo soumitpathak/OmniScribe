@@ -7,11 +7,13 @@ import { RegulatoryRulesModal } from './components/RegulatoryRulesModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { SystemArchitectureModal } from './components/SystemArchitectureModal';
 import { AuditResponse } from './types/compliance';
+import { useToast } from './context/ToastContext';
 import { ShieldCheck, AlertCircle, Sparkles, Globe, Terminal, ArrowRight } from 'lucide-react';
 
 const STORAGE_KEY = 'omniscribe_audit_history_v1';
 
 export default function App() {
+  const toast = useToast();
   const [selectedCountry, setSelectedCountry] = useState<string>('USA');
   const [currentAudit, setCurrentAudit] = useState<AuditResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -116,11 +118,31 @@ export default function App() {
 
       setCurrentAudit(result);
       saveAuditToHistory(result);
+
+      // Trigger audit completion toast
+      const isApproved = result.audit_status === 'APPROVED';
+      const isFlagged = result.audit_status === 'FLAGGED';
+      if (isApproved) {
+        toast.success(
+          'Audit Completed: Entry Cleared',
+          `Consignment ${result.audit_id} approved for ${result.destination_country} (Risk Score: ${result.risk_score}/100).`
+        );
+      } else if (isFlagged) {
+        toast.warning(
+          'Audit Completed: Review Required',
+          `Consignment ${result.audit_id} flagged (Risk Score: ${result.risk_score}/100) — ${result.compliance_discrepancies.length} discrepancies identified.`
+        );
+      } else {
+        toast.error(
+          'Audit Completed: Entry Rejected',
+          `Consignment ${result.audit_id} rejected (Risk Score: ${result.risk_score}/100) — Quarantine hold mandated.`
+        );
+      }
     } catch (err: any) {
       console.error('Audit execution failed:', err);
-      setErrorMessage(
-        err.message || 'An unexpected error occurred during the compliance audit. Please retry or verify document format.'
-      );
+      const msg = err.message || 'An unexpected technical error occurred during the compliance audit. Please retry.';
+      setErrorMessage(msg);
+      toast.error('Audit Technical Error', msg, 7000);
     } finally {
       setIsLoading(false);
     }
