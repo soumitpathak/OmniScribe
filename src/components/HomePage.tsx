@@ -798,14 +798,6 @@ export const HomePage: React.FC<HomePageProps> = ({
             <span className="text-slate-600">|</span>
             <span>Autonomous Regulatory Compliance & Continuous Audit Agent</span>
           </div>
-
-          <div className="flex items-center gap-4 font-mono text-[11px] text-slate-400">
-            <span>Gemini 3.8 Flash</span>
-            <span>•</span>
-            <span>FastAPI Container Ready</span>
-            <span>•</span>
-            <span>CBP / TARIC / TradeNet Validated</span>
-          </div>
         </div>
       </footer>
     </div>
