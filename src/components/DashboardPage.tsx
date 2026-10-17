@@ -874,21 +874,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </table>
           )}
         </div>
-
-        {/* Table Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400 font-mono">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>Autonomous Audit Repository • {history.length} records in continuous log</span>
-          </div>
-          <button
-            onClick={onNavigateToInitiate}
-            className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
-          >
-            <span>Proceed to Initiate Audit</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
       </div>
     </div>
   );
