@@ -83,6 +83,7 @@ export interface AuditResponse {
   agent_reasoning_trace?: string[];
   timestamp: string;
   document_file_name?: string;
+  audit_engine?: string;
 }
 
 export interface SampleDocument {
