@@ -1,8 +1,10 @@
-import { BookOpen, History, Hash, LogOut } from 'lucide-react';
+import { BookOpen, History, Hash, LogOut, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { OmniScribeLogo } from './OmniScribeLogo';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
+  activePage: 'dashboard' | 'initiate_audit';
+  onNavigate: (page: 'dashboard' | 'initiate_audit') => void;
   onOpenRules: () => void;
   onOpenHistory: () => void;
   onOpenArchitecture?: () => void;
@@ -13,6 +15,8 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  activePage,
+  onNavigate,
   onOpenRules,
   onOpenHistory,
   onOpenHSLookup,
@@ -27,9 +31,49 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
           <OmniScribeLogo size="md" showSubtitle={false} />
           <span className="hidden xl:inline-block text-xs text-slate-500 font-mono pl-2 border-l border-slate-800">
-            Autonomous Regulatory Compliance Workspace
+            Compliance Workspace
           </span>
         </div>
+
+        {/* Primary Page Navigation Tabs */}
+        <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-950/80 border border-slate-800">
+          <button
+            type="button"
+            onClick={() => onNavigate('dashboard')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activePage === 'dashboard'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Dashboard</span>
+            {historyCount > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  activePage === 'dashboard'
+                    ? 'bg-slate-950 text-emerald-400'
+                    : 'bg-slate-800 text-slate-300'
+                }`}
+              >
+                {historyCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('initiate_audit')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activePage === 'initiate_audit'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Initiate Audit</span>
+          </button>
+        </nav>
 
         {/* Center / Right controls */}
         <div className="flex items-center gap-2 sm:gap-3">

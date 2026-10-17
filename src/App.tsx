@@ -8,11 +8,13 @@ import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { SystemArchitectureModal } from './components/SystemArchitectureModal';
 import { HSCodeLookupModal } from './components/HSCodeLookupModal';
 import { HomePage } from './components/HomePage';
+import { DashboardPage } from './components/DashboardPage';
+import { SEED_AUDIT_HISTORY } from './data/seedAudits';
 import { AuditResponse } from './types/compliance';
 import { RegionAnnotation } from './types/auth';
 import { useToast } from './context/ToastContext';
 import { useAuth } from './context/AuthContext';
-import { AlertCircle, Sparkles, ShieldCheck, ArrowRight } from 'lucide-react';
+import { AlertCircle, Sparkles, ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-react';
 
 const STORAGE_KEY = 'omniscribe_audit_history_v1';
 
@@ -20,6 +22,7 @@ export default function App() {
   const toast = useToast();
   const { isAuthenticated, user, isLoading: isAuthLoading } = useAuth();
 
+  const [activePage, setActivePage] = useState<'dashboard' | 'initiate_audit'>('dashboard');
   const [selectedCountry, setSelectedCountry] = useState<string>('USA');
   const [currentAudit, setCurrentAudit] = useState<AuditResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -33,25 +36,30 @@ export default function App() {
   const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
   const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
 
-  // Load audit history on mount
+  // Load audit history on mount (or seed with enterprise sample audits)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           setHistory(parsed);
+          return;
         }
       }
+      // Initialize with realistic historical audits so Dashboard is immediately populated
+      setHistory(SEED_AUDIT_HISTORY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_AUDIT_HISTORY));
     } catch (e) {
       console.warn('Failed to load history from localStorage:', e);
+      setHistory(SEED_AUDIT_HISTORY);
     }
   }, []);
 
   // Save audit history to local storage
   const saveAuditToHistory = (audit: AuditResponse) => {
     setHistory((prev) => {
-      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 20);
+      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 30);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {
@@ -68,6 +76,38 @@ export default function App() {
     } catch (e) {
       console.warn(e);
     }
+    toast.info('History Cleared', 'All local audit history records have been removed.');
+  };
+
+  const handleDeleteAuditItem = (auditId: string) => {
+    setHistory((prev) => {
+      const updated = prev.filter((item) => item.audit_id !== auditId);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn(e);
+      }
+      return updated;
+    });
+    if (currentAudit?.audit_id === auditId) {
+      setCurrentAudit(null);
+    }
+    toast.info('Record Removed', `Audit record ${auditId} deleted from repository.`);
+  };
+
+  const handleResetSeedData = () => {
+    setHistory(SEED_AUDIT_HISTORY);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_AUDIT_HISTORY));
+    } catch (e) {
+      console.warn(e);
+    }
+    toast.success('Sample Records Restored', 'Loaded 6 verified customs audit records across global frameworks.');
+  };
+
+  const handleSelectAudit = (audit: AuditResponse) => {
+    setCurrentAudit(audit);
+    setActivePage('initiate_audit');
   };
 
   // Main Audit Execution Trigger
@@ -191,8 +231,10 @@ export default function App() {
   // Once authenticated: User sees the full OmniScribe Compliance Workspace
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Header */}
+      {/* Top Header with Navigation Links */}
       <Header
+        activePage={activePage}
+        onNavigate={setActivePage}
         onOpenRules={() => setIsRulesOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenArchitecture={() => setIsArchitectureOpen(true)}
@@ -220,68 +262,108 @@ export default function App() {
           </div>
         )}
 
-        {/* Dynamic State: Upload Portal vs Pipeline Animation vs Audit Results */}
-        {isLoading ? (
-          <AuditPipelineAnimation country={selectedCountry} />
-        ) : currentAudit ? (
-          <AuditReportView
-            audit={currentAudit}
-            onReset={() => setCurrentAudit(null)}
+        {/* View Switch: Dashboard Page vs Initiate Audit Page */}
+        {activePage === 'dashboard' ? (
+          <DashboardPage
             history={history}
-            onSelectAudit={(audit) => setCurrentAudit(audit)}
+            onSelectAudit={handleSelectAudit}
+            onNavigateToInitiate={() => {
+              setCurrentAudit(null);
+              setActivePage('initiate_audit');
+            }}
+            onClearHistory={handleClearHistory}
+            onResetSeedData={handleResetSeedData}
+            onDeleteAuditItem={handleDeleteAuditItem}
           />
         ) : (
-          <div className="space-y-8">
-            {/* Auditor Greeting & Welcome Banner */}
-            <div className="relative rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 p-6 sm:p-8 overflow-hidden shadow-2xl">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+          /* Initiate Audit Page */
+          <div className="space-y-6">
+            {/* Top breadcrumb navigation */}
+            <div className="flex items-center justify-between text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => setActivePage('dashboard')}
+                className="flex items-center gap-2 text-slate-400 hover:text-emerald-400 transition-colors cursor-pointer group"
+              >
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-emerald-400" />
+                <span>Return to Compliance Dashboard</span>
+              </button>
 
-              <div className="max-w-3xl space-y-4 relative z-10">
-                <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 font-semibold">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Authenticated Workspace • {user?.company || 'Global Logistics Port'}</span>
-                </div>
-
-                <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-                  Logistics Regulatory Compliance Agent
-                </h2>
-
-                <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-                  Welcome back, <strong className="text-white">{user?.name}</strong>. Inspect bills of lading, commercial invoices, and hazardous declarations against global customs regulations ({selectedCountry} framework) before consignment dispatch.
-                </p>
-
-                {/* Key stats banner */}
-                <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-                  <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                    <span className="text-slate-500 block text-[10px]">Harmonized Codes</span>
-                    <strong className="text-white text-sm">6 - 10 Digits</strong>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                    <span className="text-slate-500 block text-[10px]">Hazard Controls</span>
-                    <strong className="text-amber-400 text-sm">UN3480 / DG 9</strong>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                    <span className="text-slate-500 block text-[10px]">Tariff Defense</span>
-                    <strong className="text-cyan-400 text-sm">Section 301 / CBAM</strong>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                    <span className="text-slate-500 block text-[10px]">Audit Status</span>
-                    <strong className="text-emerald-400 text-sm">Approved / Flagged</strong>
-                  </div>
-                </div>
-              </div>
+              {currentAudit && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentAudit(null)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-slate-700 font-sans font-semibold text-xs transition-colors cursor-pointer"
+                >
+                  + Audit Another Document
+                </button>
+              )}
             </div>
 
-            {/* Document Ingestion Zone */}
-            <DocumentUploadZone
-              onAudit={handleRunAudit}
-              isLoading={isLoading}
-              selectedCountry={selectedCountry}
-              onSelectCountry={setSelectedCountry}
-              onOpenHSLookup={() => setIsHSLookupOpen(true)}
-              injectedHSCode={injectedHSCode}
-            />
+            {/* Dynamic State: Upload Portal vs Pipeline Animation vs Audit Results */}
+            {isLoading ? (
+              <AuditPipelineAnimation country={selectedCountry} />
+            ) : currentAudit ? (
+              <AuditReportView
+                audit={currentAudit}
+                onReset={() => setCurrentAudit(null)}
+                history={history}
+                onSelectAudit={(audit) => setCurrentAudit(audit)}
+              />
+            ) : (
+              <div className="space-y-8">
+                {/* Auditor Greeting & Welcome Banner */}
+                <div className="relative rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 p-6 sm:p-8 overflow-hidden shadow-2xl">
+                  <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                  <div className="max-w-3xl space-y-4 relative z-10">
+                    <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 font-semibold">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Initiate Autonomous Audit • {user?.company || 'Global Logistics Port'}</span>
+                    </div>
+
+                    <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
+                      Initiate Regulatory Compliance Audit
+                    </h2>
+
+                    <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
+                      Welcome back, <strong className="text-white">{user?.name}</strong>. Inspect bills of lading, commercial invoices, and hazardous declarations against global customs regulations before consignment dispatch.
+                    </p>
+
+                    {/* Key stats banner */}
+                    <div className="pt-2 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                        <span className="text-slate-500 block text-[10px]">Harmonized Codes</span>
+                        <strong className="text-white text-sm">6 - 10 Digits</strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                        <span className="text-slate-500 block text-[10px]">Hazard Controls</span>
+                        <strong className="text-amber-400 text-sm">UN3480 / DG 9</strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                        <span className="text-slate-500 block text-[10px]">Tariff Defense</span>
+                        <strong className="text-cyan-400 text-sm">Section 301 / CBAM</strong>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                        <span className="text-slate-500 block text-[10px]">Continuous Audit Log</span>
+                        <strong className="text-emerald-400 text-sm">{history.length} Inspected</strong>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Document Ingestion Zone */}
+                <DocumentUploadZone
+                  onAudit={handleRunAudit}
+                  isLoading={isLoading}
+                  selectedCountry={selectedCountry}
+                  onSelectCountry={setSelectedCountry}
+                  onOpenHSLookup={() => setIsHSLookupOpen(true)}
+                  injectedHSCode={injectedHSCode}
+                />
+              </div>
+            )}
           </div>
         )}
       </main>
