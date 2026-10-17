@@ -313,7 +313,6 @@ export const HomePage: React.FC<HomePageProps> = ({
                           />
                           <span>Keep me signed in</span>
                         </label>
-                        <span className="text-[11px] text-slate-500 font-mono">TLS 1.3 256-Bit</span>
                       </div>
 
                       <button
@@ -762,29 +761,6 @@ export const HomePage: React.FC<HomePageProps> = ({
                   GCC Common Customs Law Decree 11/2002, MOIAT ECAS equipment conformity, and EOCN Non-Proliferation controls.
                 </p>
               </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Bottom CTA Section */}
-        <section className="py-16 bg-gradient-to-b from-slate-950 to-slate-900">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
-            <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-              Ready to automate logistics regulatory audits?
-            </h2>
-            <p className="text-sm text-slate-300 max-w-xl mx-auto">
-              Sign in with your auditor credentials or try the instant 1-click demo to test commercial invoices against CBP, EU, and Asian trade laws.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={() => {
-                  quickDemoLogin('compliance_officer');
-                }}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-xl shadow-emerald-500/25 transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <span>Launch Compliance Workspace</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
             </div>
           </div>
         </section>
