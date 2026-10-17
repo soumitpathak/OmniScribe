@@ -612,27 +612,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {filteredAndSortedHistory.map((item) => {
                   const isExpanded = expandedAuditId === item.audit_id;
 
-                  // Status styling
+                  // Status indicator styling with zero-pill discipline
                   let statusBadge = (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                      <CheckCircle2 className="w-3 h-3" />
-                      CLEARED ({item.risk_score})
-                    </span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-sm shadow-emerald-500/50" />
+                      <span className="font-bold text-emerald-400 text-xs tracking-tight">CLEARED</span>
+                      <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
+                    </div>
                   );
 
                   if (item.audit_status === 'REJECTED') {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                        <ShieldAlert className="w-3 h-3" />
-                        REJECTED ({item.risk_score})
-                      </span>
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 shadow-sm shadow-rose-500/50" />
+                        <span className="font-bold text-rose-400 text-xs tracking-tight">REJECTED</span>
+                        <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
+                      </div>
                     );
                   } else if (item.audit_status === 'FLAGGED') {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                        <AlertTriangle className="w-3 h-3" />
-                        FLAGGED ({item.risk_score})
-                      </span>
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-sm shadow-amber-500/50" />
+                        <span className="font-bold text-amber-400 text-xs tracking-tight">FLAGGED</span>
+                        <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
+                      </div>
                     );
                   }
 
@@ -650,11 +653,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       >
                         {/* Status / Risk */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             {statusBadge}
                             <div className="w-24 h-1.5 rounded-full bg-slate-800 overflow-hidden">
                               <div
-                                className={`h-full rounded-full ${
+                                className={`h-full rounded-full transition-all ${
                                   item.risk_score >= 70
                                     ? 'bg-rose-500'
                                     : item.risk_score >= 30
@@ -672,7 +675,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                           <div className="font-mono font-bold text-white flex items-center gap-1.5">
                             <span>{item.audit_id}</span>
                           </div>
-                          <div className="text-[11px] text-slate-400 truncate max-w-[180px] font-mono">
+                          <div className="text-[11px] text-slate-400 truncate max-w-[180px] font-mono mt-0.5">
                             {item.extracted_entities?.document_number || item.document_file_name || 'Manifest'}
                           </div>
                         </td>
@@ -695,16 +698,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
                         {/* Jurisdiction */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono font-semibold text-slate-300">
-                            {item.destination_country === 'USA' ? '🇺🇸 USA' :
+                          <div className="font-medium text-slate-200 text-xs">
+                            {item.destination_country === 'USA' ? '🇺🇸 United States' :
                              item.destination_country === 'EU' ? '🇪🇺 European Union' :
                              item.destination_country === 'Singapore' ? '🇸🇬 Singapore' :
                              item.destination_country === 'UAE' ? '🇦🇪 UAE' :
                              item.destination_country === 'UK' ? '🇬🇧 United Kingdom' :
                              item.destination_country === 'Japan' ? '🇯🇵 Japan' :
                              item.destination_country === 'Australia' ? '🇦🇺 Australia' : item.destination_country}
-                          </span>
-                          <div className="text-[10px] text-slate-500 truncate max-w-[140px] mt-1 font-mono">
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate max-w-[170px] mt-0.5 font-mono">
                             {item.regulatory_framework?.split('&')[0]}
                           </div>
                         </td>
