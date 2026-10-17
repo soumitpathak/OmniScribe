@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, ChangeEvent, DragEvent } from 'react';
-import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, RefreshCw, Eye, FileSpreadsheet, Hash } from 'lucide-react';
+import { Upload, FileText, Globe, Sparkles, Check, AlertCircle, FileUp, X, RefreshCw, Eye, FileSpreadsheet, Hash, Crosshair } from 'lucide-react';
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 import { SampleDocument } from '../types/compliance';
 import { FilePreviewModal } from './FilePreviewModal';
 import { useToast } from '../context/ToastContext';
+
+import { RegionAnnotation } from '../types/auth';
 
 interface DocumentUploadZoneProps {
   onAudit: (data: {
@@ -11,6 +13,7 @@ interface DocumentUploadZoneProps {
     rawText: string;
     destinationCountry: string;
     documentType: string;
+    focusRegions?: RegionAnnotation[];
   }) => void;
   isLoading: boolean;
   selectedCountry: string;
@@ -55,6 +58,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   const [activeTab, setActiveTab] = useState<'upload' | 'text'>('upload');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeSampleId, setActiveSampleId] = useState<string | null>(null);
+  const [focusRegions, setFocusRegions] = useState<RegionAnnotation[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -167,6 +171,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
       rawText,
       destinationCountry: selectedCountry,
       documentType,
+      focusRegions,
     });
   };
 
@@ -517,6 +522,18 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
               </button>
             )}
 
+            {focusRegions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-xs font-mono font-bold text-emerald-300 border border-emerald-500/40 transition-all cursor-pointer shadow-sm"
+                title="View & Edit Highlighted Focus Regions for Gemini"
+              >
+                <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{focusRegions.length} Focus Region{focusRegions.length > 1 ? 's' : ''} Tagged</span>
+              </button>
+            )}
+
             {(file || rawText.trim()) && (
               <button
                 type="button"
@@ -524,7 +541,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                 className="hidden sm:flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all cursor-pointer shadow-sm hover:border-emerald-500/40"
               >
                 <Eye className="w-4 h-4 text-emerald-400" />
-                <span>Preview Document</span>
+                <span>Preview & Highlight</span>
               </button>
             )}
 
@@ -553,7 +570,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
         </div>
       </form>
 
-      {/* File Preview Modal */}
+      {/* File Preview Modal with Region Annotation Support */}
       <FilePreviewModal
         isOpen={previewOpen}
         onClose={() => setPreviewOpen(false)}
@@ -561,12 +578,17 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
         rawText={rawText}
         documentType={documentType}
         destinationCountry={selectedCountry}
-        onTriggerAudit={() => {
+        initialAnnotations={focusRegions}
+        onSaveAnnotations={(updated) => setFocusRegions(updated)}
+        onTriggerAudit={(annotated) => {
+          const effective = annotated || focusRegions;
+          setFocusRegions(effective);
           onAudit({
             file,
             rawText,
             destinationCountry: selectedCountry,
             documentType,
+            focusRegions: effective,
           });
         }}
         isLoading={isLoading}

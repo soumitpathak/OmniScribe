@@ -7,17 +7,19 @@ import { RegulatoryRulesModal } from './components/RegulatoryRulesModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { SystemArchitectureModal } from './components/SystemArchitectureModal';
 import { HSCodeLookupModal } from './components/HSCodeLookupModal';
+import { HomePage } from './components/HomePage';
 import { AuditResponse } from './types/compliance';
+import { RegionAnnotation } from './types/auth';
 import { useToast } from './context/ToastContext';
 import { useAuth } from './context/AuthContext';
-import { LoginModal } from './components/LoginModal';
-import { getUserAudits, saveUserAudit } from './firebase';
-import { ShieldCheck, AlertCircle, Sparkles, Globe, Terminal, ArrowRight } from 'lucide-react';
+import { AlertCircle, Sparkles, ShieldCheck, ArrowRight } from 'lucide-react';
 
 const STORAGE_KEY = 'omniscribe_audit_history_v1';
 
 export default function App() {
   const toast = useToast();
+  const { isAuthenticated, user, isLoading: isAuthLoading } = useAuth();
+
   const [selectedCountry, setSelectedCountry] = useState<string>('USA');
   const [currentAudit, setCurrentAudit] = useState<AuditResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -31,9 +33,7 @@ export default function App() {
   const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
   const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
 
-  const { user } = useAuth();
-
-  // Load audit history on mount (from local storage)
+  // Load audit history on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -48,44 +48,10 @@ export default function App() {
     }
   }, []);
 
-  // Sync with Firestore when user logs in
-  useEffect(() => {
-    if (!user) return;
-    let isCancelled = false;
-
-    getUserAudits(user.uid)
-      .then((cloudAudits) => {
-        if (isCancelled || !cloudAudits || cloudAudits.length === 0) return;
-        setHistory((prev) => {
-          const map = new Map<string, AuditResponse>();
-          // Cloud records take precedence for consistency
-          cloudAudits.forEach((a) => map.set(a.audit_id, a));
-          // Merge local records if not present in cloud
-          prev.forEach((a) => {
-            if (!map.has(a.audit_id)) {
-              map.set(a.audit_id, a);
-            }
-          });
-          const merged = Array.from(map.values()).slice(0, 30);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-          } catch {}
-          return merged;
-        });
-      })
-      .catch((err) => {
-        console.warn('Could not load user audits from Firestore:', err);
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [user]);
-
-  // Save audit history to local storage & cloud if authenticated
+  // Save audit history to local storage
   const saveAuditToHistory = (audit: AuditResponse) => {
     setHistory((prev) => {
-      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 30);
+      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 20);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {
@@ -93,10 +59,6 @@ export default function App() {
       }
       return updated;
     });
-
-    if (user) {
-      saveUserAudit(user.uid, audit);
-    }
   };
 
   const handleClearHistory = () => {
@@ -114,6 +76,7 @@ export default function App() {
     rawText: string;
     destinationCountry: string;
     documentType: string;
+    focusRegions?: RegionAnnotation[];
   }) => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -129,6 +92,9 @@ export default function App() {
         formData.append('documentType', data.documentType);
         if (data.rawText) {
           formData.append('rawText', data.rawText);
+        }
+        if (data.focusRegions && data.focusRegions.length > 0) {
+          formData.append('focusRegions', JSON.stringify(data.focusRegions));
         }
 
         const response = await fetch('/api/audit', {
@@ -151,6 +117,7 @@ export default function App() {
             destinationCountry: data.destinationCountry,
             documentType: data.documentType,
             rawText: data.rawText,
+            focusRegions: data.focusRegions || [],
           }),
         });
 
@@ -194,6 +161,34 @@ export default function App() {
     }
   };
 
+  // If user is not authenticated, render the professional OmniScribe HomePage
+  if (!isAuthenticated && !isAuthLoading) {
+    return (
+      <>
+        <HomePage
+          onOpenRulesPreview={() => setIsRulesOpen(true)}
+          onOpenHSLookupPreview={() => setIsHSLookupOpen(true)}
+        />
+
+        {/* Global Modals for Landing View */}
+        <RegulatoryRulesModal
+          isOpen={isRulesOpen}
+          onClose={() => setIsRulesOpen(false)}
+        />
+
+        <HSCodeLookupModal
+          isOpen={isHSLookupOpen}
+          onClose={() => setIsHSLookupOpen(false)}
+          onApplyCode={(code, title) => {
+            setInjectedHSCode({ code, title, timestamp: Date.now() });
+            setIsHSLookupOpen(false);
+          }}
+        />
+      </>
+    );
+  }
+
+  // Once authenticated: User sees the full OmniScribe Compliance Workspace
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Top Header */}
@@ -218,7 +213,7 @@ export default function App() {
             </div>
             <button
               onClick={() => setErrorMessage(null)}
-              className="text-slate-400 hover:text-white font-mono px-2 py-1"
+              className="text-slate-400 hover:text-white font-mono px-2 py-1 cursor-pointer"
             >
               Dismiss
             </button>
@@ -237,23 +232,23 @@ export default function App() {
           />
         ) : (
           <div className="space-y-8">
-            {/* Hero Pitch Banner */}
+            {/* Auditor Greeting & Welcome Banner */}
             <div className="relative rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 p-6 sm:p-8 overflow-hidden shadow-2xl">
               <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
               <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
               <div className="max-w-3xl space-y-4 relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-mono font-semibold">
+                <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 font-semibold">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Autonomous Cross-Border Logistics Compliance Engine</span>
+                  <span>Authenticated Workspace • {user?.company || 'Global Logistics Port'}</span>
                 </div>
 
                 <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-                  Stop Customs Fines & Port Delays Before Cargo Reaches the Border
+                  Logistics Regulatory Compliance Agent
                 </h2>
 
                 <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-                  OmniScribe’s autonomous agent inspects bills of lading, commercial invoices, and dangerous goods declarations against real-time global customs statutes (CBP 19 CFR, EU TARIC / CBAM / EUDR, Singapore TradeNet, and UAE Mirsal II).
+                  Welcome back, <strong className="text-white">{user?.name}</strong>. Inspect bills of lading, commercial invoices, and hazardous declarations against global customs regulations ({selectedCountry} framework) before consignment dispatch.
                 </p>
 
                 {/* Key stats banner */}
@@ -336,8 +331,6 @@ export default function App() {
           setCurrentAudit(null);
         }}
       />
-
-      <LoginModal />
     </div>
   );
 }

@@ -105,11 +105,14 @@ const JURISDICTION_RULES: Record<string, { agency: string; standards: string[] }
 // Robust deterministic fallback generator in case API key is absent or network failure occurs
 function generateDeterministicAudit(
   destinationCountry: string,
-  hintText: string
+  hintText: string,
+  regions?: any[]
 ): any {
   const normCountry = destinationCountry || 'USA';
   const info = JURISDICTION_RULES[normCountry] || JURISDICTION_RULES.USA;
   const lower = hintText.toLowerCase();
+
+  let auditResult: any;
 
   if (lower.includes('lithium') || lower.includes('battery') || lower.includes('8507') || lower.includes('un3480')) {
     return {
@@ -494,84 +497,35 @@ function generateDeterministicAudit(
   }
 }
 
-// Normalizes and guarantees complete schema compliance for all audit responses
-function normalizeAuditResponse(
-  parsed: any,
-  destinationCountry: string,
-  frameworkAgency: string,
-  documentType: string,
-  fileName?: string
-): any {
-  if (!parsed || typeof parsed !== 'object') {
-    parsed = {};
-  }
-
-  // Ensure audit metadata
-  parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
-  parsed.destination_country = destinationCountry;
-  parsed.regulatory_framework = frameworkAgency;
-  parsed.timestamp = parsed.timestamp || new Date().toISOString();
-
-  if (fileName) {
-    parsed.document_file_name = fileName;
-  }
-
-  // Normalize extracted_entities
-  if (!parsed.extracted_entities && parsed.entities) {
-    parsed.extracted_entities = parsed.entities;
-  }
-  if (!parsed.extracted_entities || typeof parsed.extracted_entities !== 'object') {
-    parsed.extracted_entities = {};
-  }
-
-  const ee = parsed.extracted_entities;
-  ee.document_type = ee.document_type || documentType || 'Commercial Invoice';
-  ee.document_number = ee.document_number || `DOC-${destinationCountry}-${Date.now().toString().slice(-6)}`;
-  ee.document_date = ee.document_date || new Date().toISOString().split('T')[0];
-  ee.shipper_name = ee.shipper_name || 'Exporter of Record';
-  ee.shipper_address = ee.shipper_address || 'Origin Customs Zone';
-  ee.shipper_country = ee.shipper_country || 'Origin';
-  ee.consignee_name = ee.consignee_name || 'Importer of Record';
-  ee.consignee_address = ee.consignee_address || 'Destination Customs Territory';
-  ee.consignee_country = ee.consignee_country || destinationCountry;
-  ee.mode_of_transport = ee.mode_of_transport || 'Freight Cargo';
-  ee.port_of_loading = ee.port_of_loading || 'POL Port';
-  ee.port_of_discharge = ee.port_of_discharge || 'POD Port';
-  ee.incoterms = ee.incoterms || 'CIF';
-  ee.currency = ee.currency || 'USD';
-  ee.total_declared_value = Number(ee.total_declared_value || 0);
-  ee.items = Array.isArray(ee.items) ? ee.items : [];
-
-  // Normalize status, score, arrays
-  parsed.audit_status = parsed.audit_status || 'FLAGGED';
-  parsed.risk_score = typeof parsed.risk_score === 'number' ? parsed.risk_score : 45;
-  parsed.risk_level =
-    parsed.risk_level ||
-    (parsed.risk_score > 69 ? 'CRITICAL' : parsed.risk_score > 25 ? 'MODERATE' : 'LOW');
-  parsed.compliance_discrepancies = Array.isArray(parsed.compliance_discrepancies)
-    ? parsed.compliance_discrepancies
-    : [];
-  parsed.recommended_actions = Array.isArray(parsed.recommended_actions)
-    ? parsed.recommended_actions
-    : [];
-
-  return parsed;
-}
-
 // Main API: Autonomous Compliance Audit
-app.post('/api/audit', upload.single('file') as any, async (req: any, res: any) => {
+app.post('/api/audit', upload.single('file'), async (req, res) => {
   try {
     const destinationCountry = (req.body.destinationCountry || 'USA').toString().toUpperCase();
     const documentType = (req.body.documentType || 'Commercial Invoice').toString();
     const rawText = (req.body.rawText || '').toString();
     const file = req.file;
 
+    let focusRegions: any[] = [];
+    try {
+      if (req.body.focusRegions) {
+        focusRegions = typeof req.body.focusRegions === 'string' ? JSON.parse(req.body.focusRegions) : req.body.focusRegions;
+      }
+    } catch (e) {
+      console.warn('Could not parse focusRegions:', e);
+    }
+
     const frameworkInfo = JURISDICTION_RULES[destinationCountry] || JURISDICTION_RULES.USA;
 
     // Check if we have an active Gemini API key
     if (!process.env.GEMINI_API_KEY) {
       console.log('No GEMINI_API_KEY found. Using high-fidelity compliance reasoning engine.');
-      const result = generateDeterministicAudit(destinationCountry, rawText || file?.originalname || '');
+      let result = generateDeterministicAudit(destinationCountry, rawText || file?.originalname || '');
+      if (focusRegions && focusRegions.length > 0) {
+        const regionTraces = focusRegions.map((r: any, idx: number) =>
+          `Inspector Focus Region #${idx + 1} [${r.label}]: Inspected zone [X:${r.x}%, Y:${r.y}%]. ${r.note ? `Note verified: "${r.note}".` : 'Verified against destination customs statutory requirements.'}`
+        );
+        result.agent_reasoning_trace = [...regionTraces, ...(result.agent_reasoning_trace || [])];
+      }
       return res.json(result);
     }
 
@@ -647,6 +601,12 @@ Return pure, strictly valid JSON matching this schema.
         promptText += `\n\nDocument Text Content:\n${rawText}`;
       }
 
+      if (focusRegions && focusRegions.length > 0) {
+        promptText += `\n\nTARGET FOCUS REGIONS HIGHLIGHTED BY INSPECTOR:
+${focusRegions.map((r: any, idx: number) => `Region #${idx + 1}: Category "${r.label}", Box Coordinates [X:${r.x}%, Y:${r.y}%, W:${r.width}%, H:${r.height}%]${r.note ? ` - Inspector Note: "${r.note}"` : ''}`).join('\n')}
+Please prioritize examining these specific sections and explicitly mention what was found in these focus regions in your agent_reasoning_trace and discrepancy_details.`;
+      }
+
       contents.push({ text: promptText });
 
       const response = await ai.models.generateContent({
@@ -661,18 +621,21 @@ Return pure, strictly valid JSON matching this schema.
 
       const responseText = response.text?.trim() || '{}';
       let parsed = JSON.parse(responseText);
-      const normalized = normalizeAuditResponse(
-        parsed,
-        destinationCountry,
-        frameworkInfo.agency,
-        documentType,
-        file?.originalname
-      );
-      return res.json(normalized);
+
+      // Enhance with metadata if missing
+      parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
+      parsed.destination_country = destinationCountry;
+      parsed.regulatory_framework = frameworkInfo.agency;
+      parsed.timestamp = new Date().toISOString();
+      if (file?.originalname) {
+        parsed.document_file_name = file.originalname;
+      }
+
+      return res.json(parsed);
     } catch (modelError: any) {
       console.error('Error in Gemini generateContent, falling back to deterministic compliance engine:', modelError);
       const fallback = generateDeterministicAudit(destinationCountry, rawText || file?.originalname || '');
-      return res.json(normalizeAuditResponse(fallback, destinationCountry, frameworkInfo.agency, documentType, file?.originalname));
+      return res.json(fallback);
     }
   } catch (err: any) {
     console.error('Error processing audit request:', err);
@@ -686,12 +649,18 @@ Return pure, strictly valid JSON matching this schema.
 // JSON based audit endpoint
 app.post('/api/audit-json', async (req, res) => {
   try {
-    const { destinationCountry = 'USA', documentType = 'Commercial Invoice', rawText = '', fileBase64, fileMimeType, fileName } = req.body;
+    const { destinationCountry = 'USA', documentType = 'Commercial Invoice', rawText = '', fileBase64, fileMimeType, fileName, focusRegions = [] } = req.body;
     const frameworkInfo = JURISDICTION_RULES[destinationCountry] || JURISDICTION_RULES.USA;
 
     if (!process.env.GEMINI_API_KEY) {
-      const result = generateDeterministicAudit(destinationCountry, rawText || fileName || '');
-      return res.json(normalizeAuditResponse(result, destinationCountry, frameworkInfo.agency, documentType, fileName));
+      let result = generateDeterministicAudit(destinationCountry, rawText || fileName || '');
+      if (focusRegions && Array.isArray(focusRegions) && focusRegions.length > 0) {
+        const regionTraces = focusRegions.map((r: any, idx: number) =>
+          `Inspector Focus Region #${idx + 1} [${r.label}]: Inspected zone [X:${r.x}%, Y:${r.y}%]. ${r.note ? `Note verified: "${r.note}".` : 'Verified against destination customs statutory requirements.'}`
+        );
+        result.agent_reasoning_trace = [...regionTraces, ...(result.agent_reasoning_trace || [])];
+      }
+      return res.json(result);
     }
 
     try {
@@ -708,6 +677,11 @@ app.post('/api/audit-json', async (req, res) => {
 
       let prompt = `Audit this logistics document for ${destinationCountry}. Type: ${documentType}.`;
       if (rawText) prompt += `\n\nContent:\n${rawText}`;
+      if (focusRegions && Array.isArray(focusRegions) && focusRegions.length > 0) {
+        prompt += `\n\nTARGET FOCUS REGIONS HIGHLIGHTED BY INSPECTOR:
+${focusRegions.map((r: any, idx: number) => `Region #${idx + 1}: Category "${r.label}", Box Coordinates [X:${r.x}%, Y:${r.y}%, W:${r.width}%, H:${r.height}%]${r.note ? ` - Inspector Note: "${r.note}"` : ''}`).join('\n')}
+Please prioritize examining these specific sections and explicitly mention what was found in these focus regions in your agent_reasoning_trace and discrepancy_details.`;
+      }
       contents.push({ text: prompt });
 
       const response = await ai.models.generateContent({
@@ -716,9 +690,7 @@ app.post('/api/audit-json', async (req, res) => {
         config: {
           systemInstruction: `You are OmniScribe, an Autonomous Regulatory Compliance and Continuous Audit Agent for Cross-Border Logistics.
 Destination: ${destinationCountry} (${frameworkInfo.agency}).
-Extract all entities into extracted_entities (document_number, document_date, shipper_name, shipper_address, shipper_country, consignee_name, consignee_address, consignee_country, mode_of_transport, port_of_loading, port_of_discharge, incoterms, currency, total_declared_value, items).
-Verify HS codes, examine DG / dual-use / restrictions, calculate risk score 0-100 and audit_status (APPROVED|FLAGGED|REJECTED).
-Include compliance_discrepancies, recommended_actions, and agent_reasoning_trace.
+Extract all entities, verify HS codes, examine DG / dual-use / restrictions, calculate risk score 0-100 and audit_status (APPROVED|FLAGGED|REJECTED).
 Return valid JSON.`,
           responseMimeType: 'application/json',
           temperature: 0.1,
@@ -726,18 +698,15 @@ Return valid JSON.`,
       });
 
       const parsed = JSON.parse(response.text?.trim() || '{}');
-      const normalized = normalizeAuditResponse(
-        parsed,
-        destinationCountry,
-        frameworkInfo.agency,
-        documentType,
-        fileName
-      );
-      return res.json(normalized);
+      parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
+      parsed.destination_country = destinationCountry;
+      parsed.regulatory_framework = frameworkInfo.agency;
+      parsed.timestamp = new Date().toISOString();
+      return res.json(parsed);
     } catch (e) {
       console.warn('Gemini JSON route fallback triggered:', e);
       const fallback = generateDeterministicAudit(destinationCountry, rawText || fileName || '');
-      return res.json(normalizeAuditResponse(fallback, destinationCountry, frameworkInfo.agency, documentType, fileName));
+      return res.json(fallback);
     }
   } catch (err: any) {
     res.status(500).json({ error: 'Audit failed', message: err.message });

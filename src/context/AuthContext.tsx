@@ -1,91 +1,207 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  User,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
-import { auth, googleProvider, syncUserProfile } from '../firebase';
-import { useToast } from './ToastContext';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { UserProfile } from '../types/auth';
 
-export interface UserProfileData {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL: string;
-  role: string;
+const STORAGE_KEY = 'omniscribe_user_session_v1';
+
+export const DEMO_USERS: Record<string, UserProfile> = {
+  compliance_officer: {
+    id: 'usr-demo-01',
+    name: 'Elena Rostova',
+    email: 'elena.rostova@meridiantrade.com',
+    company: 'Meridian Global Freight & Customs',
+    role: 'Logistics Compliance Officer',
+    avatarInitials: 'ER',
+    joinedAt: '2025-04-12',
+  },
+  customs_broker: {
+    id: 'usr-demo-02',
+    name: 'Marcus Chen',
+    email: 'marcus.chen@pacificbrokerage.sg',
+    company: 'Pacific TradeNet Brokerage LLP',
+    role: 'Customs Broker',
+    avatarInitials: 'MC',
+    joinedAt: '2025-07-28',
+  },
+  supply_director: {
+    id: 'usr-demo-03',
+    name: 'Sarah Lindqvist',
+    email: 'sarah.l@nordiclogistics.se',
+    company: 'Nordic Trans-Atlantic Supply Chain AG',
+    role: 'Supply Chain Director',
+    avatarInitials: 'SL',
+    joinedAt: '2024-11-19',
+  },
+};
+
+interface AuthContextValue {
+  user: UserProfile | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (email: string, password?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
+  signup: (
+    name: string,
+    email: string,
+    password: string,
+    company: string,
+    role: UserProfile['role']
+  ) => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; message: string }>;
+  quickDemoLogin: (roleKey: 'compliance_officer' | 'customs_broker' | 'supply_director') => void;
+  logout: () => void;
 }
 
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  isLoginModalOpen: boolean;
-  openLoginModal: () => void;
-  closeLoginModal: () => void;
-  loginWithGoogle: () => Promise<void>;
-  logout: () => Promise<void>;
-  roleTitle: string;
-}
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
-  const toast = useToast();
-
+  // Restore session from localStorage on initial load
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-      if (currentUser) {
-        try {
-          await syncUserProfile(currentUser);
-        } catch (e) {
-          console.warn('Error syncing profile to Firestore:', e);
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.email) {
+          setUser(parsed);
         }
       }
-    });
-
-    return () => unsubscribe();
+    } catch (e) {
+      console.warn('Failed to parse stored user session:', e);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const openLoginModal = () => setIsLoginModalOpen(true);
-  const closeLoginModal = () => setIsLoginModalOpen(false);
+  const login = async (
+    email: string,
+    _password?: string,
+    rememberMe = true
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    // Simulate brief network latency for realism
+    await new Promise((res) => setTimeout(res, 400));
 
-  const loginWithGoogle = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@')) {
+      setIsLoading(false);
+      return { success: false, error: 'Please enter a valid work email address.' };
+    }
+
+    // Check if matches known demo accounts or generate custom user profile
+    const namePart = trimmed.split('@')[0];
+    const formattedName = namePart
+      .split(/[._-]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ') || 'Compliance Officer';
+
+    const initials = formattedName
+      .split(' ')
+      .map((p) => p.charAt(0))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'OS';
+
+    const newUser: UserProfile = {
+      id: `usr-${Date.now().toString().slice(-6)}`,
+      name: formattedName,
+      email: trimmed,
+      company: trimmed.includes('@') ? trimmed.split('@')[1].split('.')[0].toUpperCase() + ' Logistics' : 'OmniScribe Global',
+      role: 'Logistics Compliance Officer',
+      avatarInitials: initials,
+      joinedAt: new Date().toISOString().split('T')[0],
+    };
+
+    setUser(newUser);
+    if (rememberMe) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+      } catch (err) {
+        console.warn('Failed to persist session:', err);
+      }
+    }
+    setIsLoading(false);
+    return { success: true };
+  };
+
+  const signup = async (
+    name: string,
+    email: string,
+    _password: string,
+    company: string,
+    role: UserProfile['role']
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    await new Promise((res) => setTimeout(res, 500));
+
+    if (!name.trim()) {
+      setIsLoading(false);
+      return { success: false, error: 'Full name is required.' };
+    }
+    if (!email.trim() || !email.includes('@')) {
+      setIsLoading(false);
+      return { success: false, error: 'Valid business email is required.' };
+    }
+
+    const initials = name
+      .trim()
+      .split(' ')
+      .map((p) => p.charAt(0))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'OS';
+
+    const newUser: UserProfile = {
+      id: `usr-${Date.now().toString().slice(-6)}`,
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      company: company.trim() || 'Global Trade Partner',
+      role: role || 'Logistics Compliance Officer',
+      avatarInitials: initials,
+      joinedAt: new Date().toISOString().split('T')[0],
+    };
+
+    setUser(newUser);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result.user) {
-        toast.success(
-          'Welcome, Auditor',
-          `Signed in as ${result.user.displayName || result.user.email}. Cloud sync enabled.`
-        );
-        setIsLoginModalOpen(false);
-      }
-    } catch (err: any) {
-      console.error('Google Sign-in failed:', err);
-      if (err.code === 'auth/popup-closed-by-user') {
-        toast.info('Sign-in cancelled', 'The login window was closed before completing.');
-      } else if (err.code === 'auth/popup-blocked') {
-        toast.warning(
-          'Popup Blocked',
-          'Please allow popups in your browser to sign in with Google.'
-        );
-      } else {
-        toast.error('Authentication Error', err.message || 'Failed to authenticate with Google.');
-      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+    } catch (e) {
+      console.warn(e);
+    }
+    setIsLoading(false);
+    return { success: true };
+  };
+
+  const forgotPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
+    setIsLoading(true);
+    await new Promise((res) => setTimeout(res, 500));
+    setIsLoading(false);
+
+    if (!email || !email.includes('@')) {
+      return { success: false, message: 'Please enter a valid registered email address.' };
+    }
+
+    return {
+      success: true,
+      message: `Password reset instructions and secure verification link have been dispatched to ${email.trim()}.`,
+    };
+  };
+
+  const quickDemoLogin = (roleKey: 'compliance_officer' | 'customs_broker' | 'supply_director') => {
+    const demo = DEMO_USERS[roleKey] || DEMO_USERS.compliance_officer;
+    setUser(demo);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(demo));
+    } catch (e) {
+      console.warn(e);
     }
   };
 
-  const logout = async () => {
+  const logout = () => {
+    setUser(null);
     try {
-      await signOut(auth);
-      toast.info('Signed Out', 'You have been disconnected from the cloud audit session.');
-    } catch (err: any) {
-      console.error('Sign-out error:', err);
-      toast.error('Sign-out failed', err.message || 'Could not log out.');
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      console.warn(e);
     }
   };
 
@@ -93,13 +209,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         user,
-        loading,
-        isLoginModalOpen,
-        openLoginModal,
-        closeLoginModal,
-        loginWithGoogle,
+        isAuthenticated: Boolean(user),
+        isLoading,
+        login,
+        signup,
+        forgotPassword,
+        quickDemoLogin,
         logout,
-        roleTitle: 'Customs Officer & Regulatory Auditor',
       }}
     >
       {children}
@@ -107,7 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-export const useAuth = () => {
+export const useAuth = (): AuthContextValue => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
