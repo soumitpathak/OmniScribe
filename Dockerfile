@@ -8,8 +8,7 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install -g npm@latest
-RUN npm install
+RUN npm ci
 
 
 
