@@ -1,26 +1,22 @@
-import React from 'react';
-import { BookOpen, History, Cpu, FileCode2, Globe, Hash, LogOut, UserCheck } from 'lucide-react';
+import { BookOpen, History, Hash, LogOut } from 'lucide-react';
 import { OmniScribeLogo } from './OmniScribeLogo';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   onOpenRules: () => void;
   onOpenHistory: () => void;
-  onOpenArchitecture: () => void;
+  onOpenArchitecture?: () => void;
   onOpenHSLookup: () => void;
   historyCount: number;
-  selectedCountry: string;
-  onSelectCountry: (c: string) => void;
+  selectedCountry?: string;
+  onSelectCountry?: (c: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenRules,
   onOpenHistory,
-  onOpenArchitecture,
   onOpenHSLookup,
   historyCount,
-  selectedCountry,
-  onSelectCountry,
 }) => {
   const { user, logout } = useAuth();
 
@@ -37,25 +33,6 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Center / Right controls */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Destination Quick Selector */}
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-xs text-slate-300">
-            <Globe className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-slate-400">Target:</span>
-            <select
-              value={selectedCountry}
-              onChange={(e) => onSelectCountry(e.target.value)}
-              className="bg-transparent font-medium text-white focus:outline-none cursor-pointer"
-            >
-              <option value="USA" className="bg-slate-900 text-white">USA (CBP 19 CFR)</option>
-              <option value="EU" className="bg-slate-900 text-white">EU (TARIC & CBAM)</option>
-              <option value="Singapore" className="bg-slate-900 text-white">Singapore (TradeNet)</option>
-              <option value="UAE" className="bg-slate-900 text-white">UAE (Mirsal II)</option>
-              <option value="UK" className="bg-slate-900 text-white">UK (HMRC CDS)</option>
-              <option value="Japan" className="bg-slate-900 text-white">Japan (NACCS)</option>
-              <option value="Australia" className="bg-slate-900 text-white">Australia (ABF)</option>
-            </select>
-          </div>
-
           {/* HS Code Lookup Helper Button */}
           <button
             onClick={onOpenHSLookup}
@@ -92,17 +69,6 @@ export const Header: React.FC<HeaderProps> = ({
                 {historyCount}
               </span>
             )}
-          </button>
-
-          {/* Architecture Modal */}
-          <button
-            onClick={onOpenArchitecture}
-            type="button"
-            className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-700/50 text-xs font-medium text-emerald-300 transition-colors cursor-pointer"
-            title="FastAPI & Cloud Run Architecture"
-          >
-            <FileCode2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Architecture</span>
           </button>
 
           {/* User Account & Sign Out */}

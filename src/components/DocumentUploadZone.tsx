@@ -503,12 +503,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
         )}
 
         {/* Submit Action Button */}
-        <div className="flex items-center justify-between pt-2">
-          <div className="text-xs text-slate-400 hidden sm:flex items-center gap-1.5 font-mono">
-            <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
-            <span>GenAI Autonomous Audit Loop</span>
-          </div>
-
+        <div className="flex items-center justify-end pt-2">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {onOpenHSLookup && (
               <button
