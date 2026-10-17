@@ -294,13 +294,6 @@ export default function App() {
             <span>•</span>
             <span>Autonomous Regulatory Compliance & Continuous Audit Agent</span>
           </div>
-          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
-            <span>FastAPI Backend Ready</span>
-            <span>•</span>
-            <span>Gemini 3.8 Flash</span>
-            <span>•</span>
-            <span>Cloud Run Container</span>
-          </div>
         </div>
       </footer>
 
