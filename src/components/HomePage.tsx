@@ -118,32 +118,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             <a href="#jurisdictions" className="hover:text-white transition-colors whitespace-nowrap shrink-0">
               Customs Standards
             </a>
-            <a href="#security" className="hover:text-white transition-colors whitespace-nowrap shrink-0">
-              Audit Architecture
-            </a>
           </nav>
-
-          {/* Zone 3: Primary Action */}
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => {
-                setAuthMode('login');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 border border-slate-700/80 rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => {
-                setAuthMode('signup');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="px-4 py-2 text-xs font-semibold text-slate-950 bg-emerald-400 hover:bg-emerald-300 rounded-xl transition-all shadow-md shadow-emerald-500/20 whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Get Started
-            </button>
-          </div>
         </div>
       </header>
 
