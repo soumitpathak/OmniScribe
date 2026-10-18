@@ -7,6 +7,7 @@ import { RegulatoryRulesModal } from './components/RegulatoryRulesModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { SystemArchitectureModal } from './components/SystemArchitectureModal';
 import { HSCodeLookupModal } from './components/HSCodeLookupModal';
+import { SettingsModal } from './components/SettingsModal';
 import { HomePage } from './components/HomePage';
 import { DashboardPage } from './components/DashboardPage';
 import { SEED_AUDIT_HISTORY } from './data/seedAudits';
@@ -34,6 +35,7 @@ export default function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [isArchitectureOpen, setIsArchitectureOpen] = useState<boolean>(false);
   const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
 
   const sanitizeAudit = (item: any): AuditResponse => {
@@ -297,6 +299,7 @@ export default function App() {
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenArchitecture={() => setIsArchitectureOpen(true)}
         onOpenHSLookup={() => setIsHSLookupOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         historyCount={history.length}
         selectedCountry={selectedCountry}
         onSelectCountry={setSelectedCountry}
@@ -332,6 +335,7 @@ export default function App() {
             onClearHistory={handleClearHistory}
             onResetSeedData={handleResetSeedData}
             onDeleteAuditItem={handleDeleteAuditItem}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         ) : (
           /* Initiate Audit Page */
@@ -419,6 +423,7 @@ export default function App() {
                   onSelectCountry={setSelectedCountry}
                   onOpenHSLookup={() => setIsHSLookupOpen(true)}
                   injectedHSCode={injectedHSCode}
+                  onBatchAuditCompleted={saveAuditToHistory}
                 />
               </div>
             )}
@@ -463,6 +468,11 @@ export default function App() {
           setInjectedHSCode({ code, title, timestamp: Date.now() });
           setCurrentAudit(null);
         }}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </div>
   );

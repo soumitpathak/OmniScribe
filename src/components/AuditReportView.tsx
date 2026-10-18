@@ -212,16 +212,16 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
           {/* Action Buttons */}
           <div className="flex flex-wrap lg:flex-col gap-2 shrink-0">
-            {/* Formatted PDF Button via jspdf */}
+            {/* Formatted PDF Button via jspdf (Requirement 1 & 7) */}
             <button
               onClick={handleDownloadPDF}
               type="button"
               disabled={isGeneratingPdf}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer transform hover:-translate-y-0.5"
-              title="Download official formatted customs inspection PDF report"
+              title="Generate a formatted, printable PDF report with logo, risk metrics, and compliance verdict"
             >
               <FileDown className="w-4 h-4 text-emerald-100" />
-              <span>{isGeneratingPdf ? 'Generating PDF...' : 'Download Formatted PDF'}</span>
+              <span>{isGeneratingPdf ? 'Compiling PDF...' : 'Generate PDF Report'}</span>
             </button>
 
             <button
@@ -346,7 +346,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           }`}
         >
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-          Recommended Actions ({audit.recommended_actions?.length || 0})
+          Mitigation Action Plan ({audit.recommended_actions?.length || 0})
         </button>
       </div>
 
@@ -362,6 +362,8 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
             <ActionItemsCard
               actions={audit.recommended_actions}
               actionDetails={audit.action_details}
+              destinationCountry={audit.destination_country}
+              discrepancies={audit.discrepancy_details}
             />
           </div>
           {audit.agent_reasoning_trace && (
@@ -395,6 +397,8 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         <ActionItemsCard
           actions={audit.recommended_actions}
           actionDetails={audit.action_details}
+          destinationCountry={audit.destination_country}
+          discrepancies={audit.discrepancy_details}
         />
       )}
     </div>

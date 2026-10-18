@@ -38,20 +38,28 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.setFillColor(15, 23, 42); // slate-900
   doc.rect(margin, y, contentWidth, 26, 'F');
 
+  // Vector Company Logo Emblem
+  doc.setFillColor(16, 185, 129); // emerald-500
+  doc.roundedRect(margin + 5, y + 4.5, 16, 16, 3, 3, 'F');
+  doc.setFillColor(15, 23, 42); // slate-900 center cutout
+  doc.circle(margin + 13, y + 12.5, 5, 'F');
+  doc.setFillColor(16, 185, 129); // inner dot
+  doc.circle(margin + 13, y + 12.5, 2.2, 'F');
+
   // Title & Brand
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(255, 255, 255);
-  doc.text('OMNISCRIBE', margin + 5, y + 9);
+  doc.text('OMNISCRIBE', margin + 25, y + 10);
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(16, 185, 129); // emerald-500
-  doc.text('AUTONOMOUS CROSS-BORDER REGULATORY COMPLIANCE AGENT', margin + 5, y + 15);
+  doc.text('AUTONOMOUS CROSS-BORDER REGULATORY COMPLIANCE & CONTINUOUS AUDIT AGENT', margin + 25, y + 15);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setTextColor(148, 163, 184); // slate-400
-  doc.text('Continuous Customs Clearance & Harmonized Tariff Audit Dossier', margin + 5, y + 21);
+  doc.text('Continuous Customs Clearance & Statutory Tariff Audit Dossier', margin + 25, y + 20);
 
   // Reference & Date on right of banner
   doc.setFont('helvetica', 'bold');
@@ -85,7 +93,7 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.setFillColor(statusBg[0], statusBg[1], statusBg[2]);
   doc.setDrawColor(statusBorder[0], statusBorder[1], statusBorder[2]);
   doc.setLineWidth(0.6);
-  doc.rect(margin, y, contentWidth, 20, 'FD');
+  doc.rect(margin, y, contentWidth, 22, 'FD');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
@@ -104,16 +112,25 @@ export function generateAuditPDF(audit: AuditResponse): void {
 
   // Risk Score on right of status card
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
+  doc.setFontSize(16);
   doc.setTextColor(statusText[0], statusText[1], statusText[2]);
-  doc.text(`${audit.risk_score}/100`, pageWidth - margin - 6, y + 11, { align: 'right' });
+  doc.text(`${audit.risk_score} / 100`, pageWidth - margin - 6, y + 9, { align: 'right' });
 
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`RISK LEVEL: ${audit.risk_level}`, pageWidth - margin - 6, y + 16, { align: 'right' });
+  doc.text(`RISK TIER: ${audit.risk_level}`, pageWidth - margin - 6, y + 14, { align: 'right' });
 
-  y += 24;
+  // Risk Visual Gauge Bar
+  const meterWidth = 44;
+  const meterX = pageWidth - margin - meterWidth - 6;
+  const meterY = y + 16.5;
+  doc.setFillColor(226, 232, 240);
+  doc.roundedRect(meterX, meterY, meterWidth, 2.5, 1, 1, 'F');
+  doc.setFillColor(statusBorder[0], statusBorder[1], statusBorder[2]);
+  doc.roundedRect(meterX, meterY, Math.max(3, (meterWidth * Math.min(100, audit.risk_score)) / 100), 2.5, 1, 1, 'F');
+
+  y += 26;
 
   // --- SECTION: SHIPMENT & ROUTING DOSSIER ---
   const entities = audit.extracted_entities || {
