@@ -106,14 +106,14 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
   let meterGradientStart = '#06b6d4'; // cyan
   let meterGradientEnd = '#10b981'; // emerald
 
-  if (certaintyScore < 85) {
-    tierLabel = audit.llm_metadata?.certainty_level || 'SUBSTANTIAL CERTAINTY';
-    tierBadgeBg = 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30';
-  } else if (certaintyScore < 75) {
+  if (certaintyScore < 75) {
     tierLabel = audit.llm_metadata?.certainty_level || 'MODERATE CERTAINTY';
     tierBadgeBg = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
     meterGradientStart = '#f59e0b';
     meterGradientEnd = '#06b6d4';
+  } else if (certaintyScore < 85) {
+    tierLabel = audit.llm_metadata?.certainty_level || 'SUBSTANTIAL CERTAINTY';
+    tierBadgeBg = 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30';
   }
 
   return (

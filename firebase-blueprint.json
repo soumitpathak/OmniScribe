@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Officer user profile and permissions record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 512 },
+        "role": { "type": "string", "enum": ["ADMIN", "OFFICER", "BROKER"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLoginAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "AuditRecord": {
+      "title": "AuditRecord",
+      "description": "Complete trade compliance audit dossier and statutory findings",
+      "type": "object",
+      "properties": {
+        "audit_id": { "type": "string", "maxLength": 128 },
+        "audit_status": { "type": "string", "enum": ["APPROVED", "FLAGGED", "REJECTED"] },
+        "risk_score": { "type": "number" },
+        "risk_level": { "type": "string", "enum": ["LOW", "MODERATE", "CRITICAL"] },
+        "destination_country": { "type": "string", "maxLength": 64 },
+        "regulatory_framework": { "type": "string", "maxLength": 256 },
+        "author_uid": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["audit_id", "audit_status", "risk_score", "risk_level", "destination_country", "author_uid"]
+    },
+    "AuditComment": {
+      "title": "AuditComment",
+      "description": "Threaded discussion note on audit discrepancies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "audit_id": { "type": "string", "maxLength": 128 },
+        "author_uid": { "type": "string", "maxLength": 128 },
+        "author_name": { "type": "string", "maxLength": 128 },
+        "author_role": { "type": "string", "enum": ["ADMIN", "OFFICER", "BROKER"] },
+        "content": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 64 },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "resolved": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "audit_id", "author_uid", "author_name", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Compliance team profiles and roles"
+    },
+    "/admins/{adminId}": {
+      "schema": "User",
+      "description": "Designated system administrators"
+    },
+    "/audits/{auditId}": {
+      "schema": "AuditRecord",
+      "description": "Autonomous trade compliance audit dossiers"
+    },
+    "/audits/{auditId}/comments/{commentId}": {
+      "schema": "AuditComment",
+      "description": "Threaded notes and discrepancy comments on audits"
+    }
+  }
+}
