@@ -93,25 +93,37 @@ export default function App() {
     };
   };
 
-  // Load audit history on mount (or seed with enterprise sample audits)
+  // Load audit history on mount (ONLY real audits initiated by the user, NO dummy seed data)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const sanitized = parsed.map(sanitizeAudit);
-          setHistory(sanitized);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+        if (Array.isArray(parsed)) {
+          const SEED_IDS = new Set([
+            'AUD-2026-US-89211',
+            'AUD-2026-EU-77412',
+            'AUD-2026-UAE-44109',
+            'AUD-2026-SGP-10924',
+            'AUD-2026-UK-33128',
+            'AUD-2026-JP-55901',
+          ]);
+          // Purge any dummy seed records so dashboard is strictly user-audit based
+          const userAudits = parsed
+            .map(sanitizeAudit)
+            .filter((item) => !SEED_IDS.has(item.audit_id));
+
+          setHistory(userAudits);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(userAudits));
           return;
         }
       }
-      // Initialize with realistic historical audits so Dashboard is immediately populated
-      setHistory(SEED_AUDIT_HISTORY);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_AUDIT_HISTORY));
+      // Start with completely clean slate - zero dummy data
+      setHistory([]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
     } catch (e) {
       console.warn('Failed to load history from localStorage:', e);
-      setHistory(SEED_AUDIT_HISTORY);
+      setHistory([]);
     }
   }, []);
 
@@ -119,7 +131,7 @@ export default function App() {
   const saveAuditToHistory = (audit: AuditResponse) => {
     const cleanAudit = sanitizeAudit(audit);
     setHistory((prev) => {
-      const updated = [cleanAudit, ...prev.filter((item) => item.audit_id !== cleanAudit.audit_id)].slice(0, 30);
+      const updated = [cleanAudit, ...prev.filter((item) => item.audit_id !== cleanAudit.audit_id)].slice(0, 50);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {
@@ -132,7 +144,7 @@ export default function App() {
   const handleClearHistory = () => {
     setHistory([]);
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
     } catch (e) {
       console.warn(e);
     }
@@ -156,13 +168,14 @@ export default function App() {
   };
 
   const handleResetSeedData = () => {
-    setHistory(SEED_AUDIT_HISTORY);
+    // Clear back to clean user state
+    setHistory([]);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_AUDIT_HISTORY));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
     } catch (e) {
       console.warn(e);
     }
-    toast.success('Sample Records Restored', 'Loaded 6 verified customs audit records across global frameworks.');
+    toast.info('Data Reset', 'Dashboard reset to clean state with 0 audit records.');
   };
 
   const handleSelectAudit = (audit: AuditResponse) => {
@@ -174,6 +187,7 @@ export default function App() {
   const handleRunAudit = async (data: {
     file: File | null;
     rawText: string;
+    sourceCountry?: string;
     destinationCountry: string;
     documentType: string;
     focusRegions?: RegionAnnotation[];
@@ -188,6 +202,7 @@ export default function App() {
         // Send as FormData
         const formData = new FormData();
         formData.append('file', data.file);
+        formData.append('sourceCountry', data.sourceCountry || 'China');
         formData.append('destinationCountry', data.destinationCountry);
         formData.append('documentType', data.documentType);
         if (data.rawText) {
@@ -214,6 +229,7 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            sourceCountry: data.sourceCountry || 'China',
             destinationCountry: data.destinationCountry,
             documentType: data.documentType,
             rawText: data.rawText,

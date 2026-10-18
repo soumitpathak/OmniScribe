@@ -20,9 +20,9 @@ import {
   Play,
   RotateCcw,
   ExternalLink,
+  Building,
 } from 'lucide-react';
-import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
-import { SampleDocument, AuditResponse } from '../types/compliance';
+import { AuditResponse } from '../types/compliance';
 import { FilePreviewModal } from './FilePreviewModal';
 import { useToast } from '../context/ToastContext';
 import { RegionAnnotation } from '../types/auth';
@@ -33,6 +33,7 @@ export interface BatchItem {
   size: number;
   file?: File;
   sampleText?: string;
+  sourceCountry?: string;
   destinationCountry: string;
   documentType: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
@@ -45,6 +46,7 @@ interface DocumentUploadZoneProps {
   onAudit: (data: {
     file: File | null;
     rawText: string;
+    sourceCountry?: string;
     destinationCountry: string;
     documentType: string;
     focusRegions?: RegionAnnotation[];
@@ -56,6 +58,24 @@ interface DocumentUploadZoneProps {
   injectedHSCode?: { code: string; title: string; timestamp: number } | null;
   onBatchAuditCompleted?: (audit: AuditResponse) => void;
 }
+
+export const SOURCES = [
+  { code: 'CN', name: 'China', flag: '🇨🇳' },
+  { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
+  { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+  { code: 'IN', name: 'India', flag: '🇮🇳' },
+  { code: 'US', name: 'United States', flag: '🇺🇸' },
+  { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+  { code: 'KR', name: 'South Korea', flag: '🇰🇷' },
+  { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+  { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+  { code: 'TW', name: 'Taiwan', flag: '🇹🇼' },
+  { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+  { code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+  { code: 'OTHER', name: 'Other Origin / Free Zone', flag: '🌐' },
+];
 
 const DESTINATIONS = [
   { code: 'USA', name: 'United States', flag: '🇺🇸', authority: 'CBP / ACE / FDA' },
@@ -86,6 +106,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   onBatchAuditCompleted,
 }) => {
   const toast = useToast();
+  const [sourceCountry, setSourceCountry] = useState('China');
   const [documentType, setDocumentType] = useState('Commercial Invoice');
   const [file, setFile] = useState<File | null>(null);
   const [fileThumbnail, setFileThumbnail] = useState<string | null>(null);
@@ -93,7 +114,6 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<'upload' | 'batch' | 'text'>('upload');
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [activeSampleId, setActiveSampleId] = useState<string | null>(null);
   const [focusRegions, setFocusRegions] = useState<RegionAnnotation[]>([]);
 
   // Batch Processing State (Requirement 9)
@@ -156,7 +176,6 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     }
 
     setFile(selectedFile);
-    setActiveSampleId(null);
 
     const isImg = selectedFile.type.startsWith('image/');
     const isPdf = selectedFile.type === 'application/pdf' || selectedFile.name.toLowerCase().endsWith('.pdf');
@@ -191,6 +210,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
       name: f.name,
       size: f.size,
       file: f,
+      sourceCountry: sourceCountry,
       destinationCountry: selectedCountry,
       documentType: documentType,
       status: 'queued',
@@ -200,46 +220,6 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     setBatchQueue((prev) => [...prev, ...newItems]);
     setActiveTab('batch');
     toast.info('Batch Manifests Added', `Added ${files.length} document(s) to concurrent audit queue.`);
-  };
-
-  // Pre-load 3 realistic sample batch files for 1-click test
-  const handleLoadSampleBatch = () => {
-    const sampleBatch: BatchItem[] = [
-      {
-        id: `batch-sample-1`,
-        name: 'INV-2026-HyperPower-LithiumModules.pdf',
-        size: 245000,
-        sampleText: SAMPLE_DOCUMENTS[0].sample_text,
-        destinationCountry: 'USA',
-        documentType: 'Commercial Invoice',
-        status: 'queued',
-        progress: 0,
-      },
-      {
-        id: `batch-sample-2`,
-        name: 'AWB-772-AeroWave-SatComTransceivers.pdf',
-        size: 382000,
-        sampleText: SAMPLE_DOCUMENTS[1].sample_text,
-        destinationCountry: 'UAE',
-        documentType: 'Air Waybill (AWB)',
-        status: 'queued',
-        progress: 0,
-      },
-      {
-        id: `batch-sample-3`,
-        name: 'BOL-SNT-FazendaMonteVerde-Coffee.pdf',
-        size: 198000,
-        sampleText: SAMPLE_DOCUMENTS[2].sample_text,
-        destinationCountry: 'EU',
-        documentType: 'Ocean Bill of Lading (B/L)',
-        status: 'queued',
-        progress: 0,
-      },
-    ];
-
-    setBatchQueue(sampleBatch);
-    setActiveTab('batch');
-    toast.success('Sample Batch Loaded', 'Ingested 3 enterprise cross-border trade documents into the batch queue.');
   };
 
   // Execute Concurrent Batch Audit
@@ -267,6 +247,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
         if (item.file) {
           const formData = new FormData();
           formData.append('file', item.file);
+          formData.append('sourceCountry', item.sourceCountry || sourceCountry);
           formData.append('destinationCountry', item.destinationCountry);
           formData.append('documentType', item.documentType);
 
@@ -281,6 +262,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              sourceCountry: item.sourceCountry || sourceCountry,
               destinationCountry: item.destinationCountry,
               documentType: item.documentType,
               rawText: item.sampleText || '',
@@ -324,6 +306,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
       onAudit({
         file: item.file || null,
         rawText: item.sampleText || '',
+        sourceCountry: item.sourceCountry || sourceCountry,
         destinationCountry: item.destinationCountry,
         documentType: item.documentType,
       });
@@ -335,28 +318,11 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     toast.info('Batch Queue Cleared', 'All queued items have been removed.');
   };
 
-  const handleLoadSample = (sample: SampleDocument) => {
-    setActiveSampleId(sample.id);
-    onSelectCountry(sample.destination_country);
-    setDocumentType(sample.document_type);
-    setRawText(sample.sample_text);
-    if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
-    setFileThumbnail(null);
-    setFile(null);
-    setActiveTab('text');
-
-    toast.info(
-      'Test Scenario Ingested',
-      `Loaded "${sample.title}" for ${sample.destination_country} regulatory evaluation.`
-    );
-  };
-
   const handleClear = () => {
     if (fileThumbnail) URL.revokeObjectURL(fileThumbnail);
     setFileThumbnail(null);
     setFile(null);
     setRawText('');
-    setActiveSampleId(null);
     setFocusRegions([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
     toast.info('Document Cleared', 'Ready for new customs document ingestion.');
@@ -372,6 +338,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     onAudit({
       file,
       rawText,
+      sourceCountry,
       destinationCountry: selectedCountry,
       documentType,
       focusRegions,
@@ -456,18 +423,48 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Manifest Text & Samples</span>
+              <span>Paste Manifest Text</span>
             </button>
           </div>
         </div>
       </div>
 
       <div className="p-5 space-y-5">
-        {/* Jurisdiction & Document Type Selectors */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Source Origin, Destination Jurisdiction & Document Type Selectors */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Source Dropdown */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              Target Destination Jurisdiction
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Source / Export Origin</span>
+              <span className="text-[10px] text-cyan-400 font-mono font-normal">POL Origin</span>
+            </label>
+            <div className="relative">
+              <select
+                value={sourceCountry}
+                onChange={(e) => setSourceCountry(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700/80 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 appearance-none font-medium cursor-pointer"
+              >
+                {SOURCES.map((s) => (
+                  <option key={s.code} value={s.name} className="bg-slate-900 text-white">
+                    {s.flag} {s.name}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                <Building className="w-4 h-4 text-cyan-400" />
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+              <span>Origin:</span>
+              <span className="text-cyan-400 font-mono">{sourceCountry}</span>
+            </p>
+          </div>
+
+          {/* Destination Jurisdiction */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Destination Jurisdiction</span>
+              <span className="text-[10px] text-emerald-400 font-mono font-normal">Customs POD</span>
             </label>
             <div className="relative">
               <select
@@ -491,9 +488,11 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
             </p>
           </div>
 
+          {/* Document Type */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-              Logistics Document Type
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+              <span>Logistics Document Type</span>
+              <span className="text-[10px] text-slate-400 font-mono font-normal">Format</span>
             </label>
             <div className="relative">
               <select
@@ -512,7 +511,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
               </div>
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
-              Supports multi-item customs classification & valuation cross-check
+              Supports multi-item customs valuation & screening
             </p>
           </div>
         </div>
@@ -653,15 +652,6 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                 >
                   <Upload className="w-3.5 h-3.5" />
                   <span>Add Files to Batch</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLoadSampleBatch}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Load Sample Batch (3 Documents)</span>
                 </button>
               </div>
 
@@ -808,70 +798,9 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
           </div>
         )}
 
-        {/* --- TAB 3: MANIFEST TEXT & 1-CLICK SAMPLES --- */}
+        {/* --- TAB 3: MANIFEST TEXT INPUT --- */}
         {activeTab === 'text' && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* 1-Click Instant Sample Scenarios Bar */}
-            <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  Instant Pre-Packaged Test Scenarios:
-                </span>
-                <span className="text-[10px] text-slate-500 font-mono">1-Click Auto-Fill</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                {SAMPLE_DOCUMENTS.map((sample) => {
-                  const isSelected = activeSampleId === sample.id;
-                  let badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
-                  if (sample.badge.variant === 'danger')
-                    badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
-                  if (sample.badge.variant === 'success')
-                    badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
-
-                  return (
-                    <button
-                      key={sample.id}
-                      type="button"
-                      onClick={() => handleLoadSample(sample)}
-                      className={`text-left p-2.5 rounded-xl border transition-all relative flex flex-col justify-between cursor-pointer ${
-                        isSelected
-                          ? 'bg-slate-800 border-emerald-500 shadow-md ring-1 ring-emerald-500'
-                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between gap-1 mb-1">
-                          <span
-                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${badgeColor}`}
-                          >
-                            {sample.destination_country} • {sample.badge.label.split('/')[0].trim()}
-                          </span>
-                        </div>
-                        <p className="text-xs font-bold text-slate-100 line-clamp-1">
-                          {sample.title.split('(')[0]}
-                        </p>
-                        <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{sample.subtitle}</p>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 font-mono pt-1.5 border-t border-slate-800/60">
-                        <span>
-                          {sample.destination_country === 'USA'
-                            ? '🇺🇸 49 CFR DG'
-                            : sample.destination_country === 'UAE'
-                            ? '🇦🇪 Dual-Use'
-                            : sample.destination_country === 'EU'
-                            ? '🇪🇺 EUDR Clean'
-                            : '🇸🇬 Pharma HSA'}
-                        </span>
-                        <span className="text-emerald-400">Load →</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">

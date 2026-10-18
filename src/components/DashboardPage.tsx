@@ -173,14 +173,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       }
     });
 
-    return months.map((m, idx) => {
-      // For earlier months with low sample data, synthesize realistic baseline compliance improvements
-      const avg = m.count > 0 ? Math.round(m.totalRisk / m.count) : Math.max(14, Math.round(54 - idx * 2.8));
+    return months.map((m) => {
+      // Calculate true average from real user audits; 0 when no audits conducted
+      const avg = m.count > 0 ? Math.round(m.totalRisk / m.count) : 0;
       return {
         month: m.month,
         avgRiskScore: avg,
         auditsCount: m.count,
-        targetThreshold: 30, // Healthy supply chain benchmark
+        targetThreshold: 30, // Statutory benchmark
       };
     });
   }, [history]);
@@ -991,20 +991,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     Reset All Filters
                   </button>
                 ) : (
-                  <>
-                    <button
-                      onClick={onResetSeedData}
-                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-emerald-400 border border-slate-700 cursor-pointer"
-                    >
-                      Load Sample Records
-                    </button>
-                    <button
-                      onClick={onNavigateToInitiate}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow cursor-pointer"
-                    >
-                      Initiate Audit Now
-                    </button>
-                  </>
+                  <button
+                    onClick={onNavigateToInitiate}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-xs font-bold text-white shadow-md shadow-emerald-500/20 cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>Initiate Your First Audit</span>
+                  </button>
                 )}
               </div>
             </div>

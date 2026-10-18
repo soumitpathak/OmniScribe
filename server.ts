@@ -590,6 +590,7 @@ function normalizeAuditResponse(
 app.post('/api/audit', upload.single('file') as any, async (req: any, res: any) => {
   try {
     const destinationCountry = (req.body.destinationCountry || 'USA').toString().toUpperCase();
+    const sourceCountry = (req.body.sourceCountry || 'China').toString();
     const documentType = (req.body.documentType || 'Commercial Invoice').toString();
     const rawText = (req.body.rawText || '').toString();
     const file = req.file;
@@ -609,6 +610,9 @@ app.post('/api/audit', upload.single('file') as any, async (req: any, res: any) 
     if (!process.env.GEMINI_API_KEY || geminiQuotaExhausted) {
       console.info('[OmniScribe Engine] Processing audit via Autonomous Statutory Compliance Engine.');
       const result = executeDeterministicAudit(destinationCountry, rawText || file?.originalname || '', focusRegions, file?.originalname);
+      if (result?.extracted_entities && sourceCountry) {
+        result.extracted_entities.shipper_country = sourceCountry;
+      }
       return res.json(result);
     }
 
@@ -743,12 +747,15 @@ Please prioritize examining these specific sections and explicitly mention what 
 // JSON based audit endpoint
 app.post('/api/audit-json', async (req, res) => {
   try {
-    const { destinationCountry = 'USA', documentType = 'Commercial Invoice', rawText = '', fileBase64, fileMimeType, fileName, focusRegions = [] } = req.body;
+    const { destinationCountry = 'USA', sourceCountry = 'China', documentType = 'Commercial Invoice', rawText = '', fileBase64, fileMimeType, fileName, focusRegions = [] } = req.body;
     const frameworkInfo = JURISDICTION_RULES[destinationCountry] || JURISDICTION_RULES.USA;
 
     if (!process.env.GEMINI_API_KEY || geminiQuotaExhausted) {
       console.info('[OmniScribe Engine] Processing JSON audit via Autonomous Statutory Compliance Engine.');
       const result = executeDeterministicAudit(destinationCountry, rawText || fileName || '', focusRegions, fileName);
+      if (result?.extracted_entities && sourceCountry) {
+        result.extracted_entities.shipper_country = sourceCountry;
+      }
       return res.json(result);
     }
 
@@ -764,7 +771,7 @@ app.post('/api/audit-json', async (req, res) => {
         });
       }
 
-      let prompt = `Audit this logistics document for ${destinationCountry}. Type: ${documentType}.`;
+      let prompt = `Audit this logistics document originating from ${sourceCountry} for import entry into ${destinationCountry}. Type: ${documentType}.`;
       if (rawText) prompt += `\n\nContent:\n${rawText}`;
       if (focusRegions && Array.isArray(focusRegions) && focusRegions.length > 0) {
         prompt += `\n\nTARGET FOCUS REGIONS HIGHLIGHTED BY INSPECTOR:
