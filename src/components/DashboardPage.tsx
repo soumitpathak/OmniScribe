@@ -56,6 +56,7 @@ import {
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
 import { AuditRiskFrequencyTrendChart } from './AuditRiskFrequencyTrendChart';
 import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
+import { HighRiskAuditMilestoneTimeline } from './HighRiskAuditMilestoneTimeline';
 import { BulkExportModal } from './BulkExportModal';
 import { CompareAuditsModal } from './CompareAuditsModal';
 import { useToast } from '../context/ToastContext';
@@ -68,6 +69,7 @@ interface DashboardPageProps {
   onResetSeedData: () => void;
   onDeleteAuditItem: (auditId: string) => void;
   onOpenSettings?: () => void;
+  onUpdateAudit?: (updatedAudit: AuditResponse) => void;
 }
 
 type SortField = 'timestamp' | 'risk_score' | 'total_value' | 'audit_id' | 'destination_country';
@@ -81,6 +83,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onResetSeedData,
   onDeleteAuditItem,
   onOpenSettings,
+  onUpdateAudit,
 }) => {
   const toast = useToast();
 
@@ -565,6 +568,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       <AuditRiskFrequencyTrendChart
         history={history}
         onSelectAudit={onSelectAudit}
+      />
+
+      {/* High-Risk Consignment Milestone Timeline Visualization (Initial Filing, Compliance Hold, Review Requested, Cleared) */}
+      <HighRiskAuditMilestoneTimeline
+        history={history}
+        onSelectAudit={onSelectAudit}
+        onUpdateAudit={onUpdateAudit}
       />
 
       {/* --- ANALYTICAL CHARTS SECTION (Requirements 5, 11, 12) --- */}

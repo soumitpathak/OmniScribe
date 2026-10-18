@@ -211,6 +211,21 @@ export default function App() {
     setActivePage('initiate_audit');
   };
 
+  const handleUpdateAudit = (updatedAudit: AuditResponse) => {
+    setHistory((prev) => {
+      const updated = prev.map((a) => (a.audit_id === updatedAudit.audit_id ? updatedAudit : a));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn(e);
+      }
+      return updated;
+    });
+    if (currentAudit && currentAudit.audit_id === updatedAudit.audit_id) {
+      setCurrentAudit(updatedAudit);
+    }
+  };
+
   // Main Audit Execution Trigger
   const handleRunAudit = async (data: {
     file: File | null;
@@ -459,6 +474,7 @@ export default function App() {
             onResetSeedData={handleResetSeedData}
             onDeleteAuditItem={handleDeleteAuditItem}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onUpdateAudit={handleUpdateAudit}
           />
         ) : (
           /* Initiate Audit Page */
