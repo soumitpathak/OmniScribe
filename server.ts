@@ -959,6 +959,10 @@ interface StoredCommentReply {
   author_avatar_color: string;
   created_at: string;
   content: string;
+  parent_reply_id?: string;
+  target_point?: string;
+  mentions?: string[];
+  replies?: StoredCommentReply[];
 }
 
 interface StoredAuditComment {
@@ -976,10 +980,48 @@ interface StoredAuditComment {
   content: string;
   tags?: string[];
   target_item_ref?: string;
+  mentions?: string[];
   replies?: StoredCommentReply[];
 }
 
 const auditCommentsStore = new Map<string, StoredAuditComment[]>();
+
+// Helper to extract @mentions from text content
+function extractMentions(text: string): string[] {
+  if (!text) return [];
+  const knownOfficers = ['Sarah Chen', 'Marcus Vance, LCB', 'Marcus Vance', 'Elena Rostova, JD', 'Elena Rostova', 'Devin Brooks'];
+  const mentionsFound = new Set<string>();
+  
+  knownOfficers.forEach((officer) => {
+    if (text.includes(`@${officer}`)) {
+      mentionsFound.add(officer);
+    }
+  });
+
+  // Also match generic @Word or @Name patterns
+  const regex = /@([A-Za-z0-9_.\s,-]+?)(?=\s|$|[.,!?\n])/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const candidate = match[1].trim();
+    if (candidate && candidate.length > 1 && !mentionsFound.has(candidate)) {
+      mentionsFound.add(candidate);
+    }
+  }
+
+  return Array.from(mentionsFound);
+}
+
+// Helper to find a reply recursively by id within an array of replies
+function findReplyRecursively(replies: StoredCommentReply[], replyId: string): StoredCommentReply | null {
+  for (const r of replies) {
+    if (r.id === replyId) return r;
+    if (r.replies && r.replies.length > 0) {
+      const nested = findReplyRecursively(r.replies, replyId);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
 
 // Helper to seed initial sample notes for audit dossiers
 function getOrSeedAuditComments(auditId: string): StoredAuditComment[] {
@@ -987,15 +1029,14 @@ function getOrSeedAuditComments(auditId: string): StoredAuditComment[] {
     return auditCommentsStore.get(auditId)!;
   }
 
-  // Generate contextual initial officer notes based on audit ID or realistic scenario
   const sampleComments: StoredAuditComment[] = [
     {
-      id: `c_${Date.now() - 3600000 * 4}_1`,
+      id: `c_${Date.now() - 3600000 * 5}_1`,
       audit_id: auditId,
       author_name: 'Marcus Vance, LCB',
       author_role: 'Senior Customs Broker (US CBP License #48912)',
       author_avatar_color: 'from-amber-500 to-orange-600',
-      created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+      created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
       category: 'RISK_FLAG',
       priority: 'HIGH',
       is_pinned: true,
@@ -1003,22 +1044,68 @@ function getOrSeedAuditComments(auditId: string): StoredAuditComment[] {
       content: 'Identified potential Section 301 ad valorem duty discrepancy and missing UN Manual of Tests and Criteria Part III, subsection 38.3 test summaries. Placed internal clearance hold on ACE filing pending broker review.',
       tags: ['#UN3480', '#Section301', '#ACE-Hold', '#DangerousGoods'],
       target_item_ref: 'Line Item #1: Rechargeable Lithium-Ion Cells',
+      mentions: ['Sarah Chen'],
       replies: [
         {
-          id: `r_${Date.now() - 3600000 * 2}_1`,
+          id: `r_${Date.now() - 3600000 * 3}_1`,
           author_name: 'Sarah Chen',
           author_role: 'Chief Compliance Officer',
           author_avatar_color: 'from-emerald-500 to-teal-600',
-          created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-          content: 'Concur with hold. Notify shipper to transmit supplier declaration of conformity and manufacturer test certificates before port container gate-in.',
+          created_at: new Date(Date.now() - 3600000 * 3).toISOString(),
+          content: 'Concur with hold. @Marcus Vance, LCB please notify shipper to transmit supplier declaration of conformity and UN 38.3 laboratory test certificates before port container gate-in.',
+          target_point: 'UN 38.3 Laboratory Test Certificate Requirement',
+          mentions: ['Marcus Vance, LCB'],
+          replies: [
+            {
+              id: `r_${Date.now() - 3600000 * 2}_sub1`,
+              author_name: 'Marcus Vance, LCB',
+              author_role: 'Senior Customs Broker (US CBP License #48912)',
+              author_avatar_color: 'from-amber-500 to-orange-600',
+              created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+              parent_reply_id: `r_${Date.now() - 3600000 * 3}_1`,
+              content: '@Sarah Chen - Sub-conversation on Section 301 exclusion: Checked USTR docket, exclusions expired June 2024. Full 25% supplemental duty must be entered under HTS 9903.88.03.',
+              target_point: 'Section 301 Tariff Exclusion Validity',
+              mentions: ['Sarah Chen'],
+              replies: [
+                {
+                  id: `r_${Date.now() - 3600000 * 1.5}_subsub1`,
+                  author_name: 'Elena Rostova, JD',
+                  author_role: 'Trade Sanctions & Regulatory Counsel',
+                  author_avatar_color: 'from-cyan-500 to-blue-600',
+                  created_at: new Date(Date.now() - 3600000 * 1.5).toISOString(),
+                  parent_reply_id: `r_${Date.now() - 3600000 * 2}_sub1`,
+                  content: '@Marcus Vance, LCB - Statutory verification confirmed. 19 U.S.C. § 2411 applies without exception. I will file the legal memo to the customs docket.',
+                  target_point: 'Statutory 19 U.S.C. § 2411 verification',
+                  mentions: ['Marcus Vance, LCB'],
+                  replies: [],
+                },
+              ],
+            },
+          ],
         },
         {
           id: `r_${Date.now() - 1800000}_2`,
-          author_name: 'Marcus Vance, LCB',
-          author_role: 'Senior Customs Broker (US CBP License #48912)',
-          author_avatar_color: 'from-amber-500 to-orange-600',
+          author_name: 'Devin Brooks',
+          author_role: 'Import Operations Lead',
+          author_avatar_color: 'from-purple-500 to-indigo-600',
           created_at: new Date(Date.now() - 1800000).toISOString(),
           content: 'Broker team reached out to Shenzhen logistics desk. ETA on documentation packet is 09:00 EST tomorrow.',
+          target_point: 'Shenzhen Documentation Packet ETA',
+          mentions: ['Sarah Chen'],
+          replies: [
+            {
+              id: `r_${Date.now() - 900000}_sub2`,
+              author_name: 'Sarah Chen',
+              author_role: 'Chief Compliance Officer',
+              author_avatar_color: 'from-emerald-500 to-teal-600',
+              created_at: new Date(Date.now() - 900000).toISOString(),
+              parent_reply_id: `r_${Date.now() - 1800000}_2`,
+              content: '@Devin Brooks please monitor container vessel AIS telemetry. Port demurrage clock starts on Tuesday.',
+              target_point: 'Port demurrage clock & vessel telemetry',
+              mentions: ['Devin Brooks'],
+              replies: [],
+            },
+          ],
         },
       ],
     },
@@ -1033,9 +1120,10 @@ function getOrSeedAuditComments(auditId: string): StoredAuditComment[] {
       priority: 'MEDIUM',
       is_pinned: false,
       is_resolved: false,
-      content: 'Verified consignee against OFAC SDN and BIS Entity Lists. Negative hit confirmed. However, Incoterms DDP requires foreign shipper to act as Importer of Record or appoint a US resident agent with Customs Power of Attorney (CPOA).',
+      content: 'Verified consignee against OFAC SDN and BIS Entity Lists. Negative hit confirmed. However, Incoterms DDP requires foreign shipper to act as Importer of Record or appoint a US resident agent with Customs Power of Attorney (CPOA). @Marcus Vance, LCB please cross-check with broker bond records.',
       tags: ['#Incoterms-DDP', '#OFAC-Screening', '#CPOA'],
       target_item_ref: 'Shipper/Consignee Legal Assessment',
+      mentions: ['Marcus Vance, LCB'],
       replies: [],
     },
   ];
@@ -1069,11 +1157,16 @@ app.post('/api/audits/:auditId/comments', (req, res) => {
       tags,
       target_item_ref,
       is_pinned,
+      mentions,
     } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ error: 'Comment content is required' });
     }
+
+    const detectedMentions = Array.isArray(mentions) && mentions.length > 0 
+      ? mentions 
+      : extractMentions(content);
 
     const comments = getOrSeedAuditComments(auditId);
     const newComment: StoredAuditComment = {
@@ -1090,6 +1183,7 @@ app.post('/api/audits/:auditId/comments', (req, res) => {
       content: content.trim(),
       tags: Array.isArray(tags) ? tags : [],
       target_item_ref: target_item_ref || undefined,
+      mentions: detectedMentions,
       replies: [],
     };
 
@@ -1106,11 +1200,19 @@ app.post('/api/audits/:auditId/comments', (req, res) => {
   }
 });
 
-// POST threaded reply to a specific comment
+// POST threaded reply or nested sub-reply to a specific comment
 app.post('/api/audits/:auditId/comments/:commentId/reply', (req, res) => {
   try {
     const { auditId, commentId } = req.params;
-    const { author_name, author_role, author_avatar_color, content } = req.body;
+    const {
+      author_name,
+      author_role,
+      author_avatar_color,
+      content,
+      parent_reply_id,
+      target_point,
+      mentions,
+    } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ error: 'Reply content is required' });
@@ -1127,6 +1229,10 @@ app.post('/api/audits/:auditId/comments/:commentId/reply', (req, res) => {
       target.replies = [];
     }
 
+    const detectedMentions = Array.isArray(mentions) && mentions.length > 0 
+      ? mentions 
+      : extractMentions(content);
+
     const newReply: StoredCommentReply = {
       id: `r_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
       author_name: author_name || 'Compliance Officer',
@@ -1134,9 +1240,28 @@ app.post('/api/audits/:auditId/comments/:commentId/reply', (req, res) => {
       author_avatar_color: author_avatar_color || 'from-teal-500 to-emerald-600',
       created_at: new Date().toISOString(),
       content: content.trim(),
+      parent_reply_id: parent_reply_id || undefined,
+      target_point: target_point || undefined,
+      mentions: detectedMentions,
+      replies: [],
     };
 
-    target.replies.push(newReply);
+    if (parent_reply_id) {
+      // Find the specific parent reply to nest under for sub-conversations on specific points
+      const parentReply = findReplyRecursively(target.replies, parent_reply_id);
+      if (parentReply) {
+        if (!parentReply.replies) {
+          parentReply.replies = [];
+        }
+        parentReply.replies.push(newReply);
+      } else {
+        // Fallback: attach to top-level replies if parent wasn't found
+        target.replies.push(newReply);
+      }
+    } else {
+      target.replies.push(newReply);
+    }
+
     auditCommentsStore.set(auditId, comments);
     return res.status(201).json(newReply);
   } catch (err: any) {

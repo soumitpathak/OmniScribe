@@ -120,6 +120,10 @@ export interface CommentReply {
   author_avatar_color: string;
   created_at: string;
   content: string;
+  parent_reply_id?: string; // Links this reply to a parent reply for nested sub-conversations
+  target_point?: string; // Optional specific discrepancy point or reference
+  mentions?: string[]; // @user mentions extracted from content
+  replies?: CommentReply[]; // Nested sub-replies for multi-level discussion threads
 }
 
 export interface AuditComment {
@@ -137,6 +141,7 @@ export interface AuditComment {
   content: string;
   tags?: string[];
   target_item_ref?: string;
+  mentions?: string[]; // @user mentions extracted from content
   replies?: CommentReply[];
 }
 

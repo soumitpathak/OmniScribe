@@ -54,6 +54,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
+import { Past30DaysRiskTrendWidget } from './Past30DaysRiskTrendWidget';
 import { AuditRiskFrequencyTrendChart } from './AuditRiskFrequencyTrendChart';
 import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
 import { RegionalRiskDistributionWidget } from './RegionalRiskDistributionWidget';
@@ -563,6 +564,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         onSelectAudit={onSelectAudit}
         onNavigateToInitiate={onNavigateToInitiate}
         onResetSeedData={onResetSeedData}
+      />
+
+      {/* Requirement: New Line Chart Widget Visualizing 30-Day Average Risk Score of Audited Documents (Recharts) */}
+      <Past30DaysRiskTrendWidget
+        history={history}
+        onSelectAudit={onSelectAudit}
       />
 
       {/* Trend Analysis View: Frequency of Audit Risk Levels Over Time (Recharts Line Chart) */}
