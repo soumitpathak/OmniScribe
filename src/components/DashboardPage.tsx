@@ -309,14 +309,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         }
 
         if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase();
+          const q = searchQuery.toLowerCase().trim();
           const matchId = item.audit_id?.toLowerCase().includes(q);
-          const matchShipper = item.extracted_entities?.shipper_name?.toLowerCase().includes(q);
+          const matchShipper =
+            item.extracted_entities?.shipper_name?.toLowerCase().includes(q) ||
+            (item as any).shipper_name?.toLowerCase().includes(q);
+          const matchCountry = item.destination_country?.toLowerCase().includes(q);
           const matchConsignee = item.extracted_entities?.consignee_name?.toLowerCase().includes(q);
           const matchDocNum = item.extracted_entities?.document_number?.toLowerCase().includes(q);
           const matchDocType = item.extracted_entities?.document_type?.toLowerCase().includes(q);
           const matchFileName = item.document_file_name?.toLowerCase().includes(q);
-          const matchCountry = item.destination_country?.toLowerCase().includes(q);
           const matchFramework = item.regulatory_framework?.toLowerCase().includes(q);
 
           const matchItems = item.extracted_entities?.items?.some(
@@ -331,11 +333,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           return (
             matchId ||
             matchShipper ||
+            matchCountry ||
             matchConsignee ||
             matchDocNum ||
             matchDocType ||
             matchFileName ||
-            matchCountry ||
             matchFramework ||
             matchItems ||
             matchDiscrepancies
@@ -812,6 +814,115 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      {/* Fast Audit Navigation & Repository Search Bar */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500 fill-mode-both">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <Search className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Fast Audit Search & Navigation</span>
+                {searchQuery && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Filtered
+                  </span>
+                )}
+              </h2>
+              <p className="text-xs text-slate-400">
+                Filter audit history list instantly by <strong className="text-emerald-400 font-mono">Audit ID</strong>, <strong className="text-cyan-400 font-mono">Shipper Name</strong>, or <strong className="text-amber-400 font-mono">Destination Country</strong>
+              </p>
+            </div>
+          </div>
+
+          {/* Quick jump to results */}
+          <div className="flex items-center gap-2 self-start md:self-auto">
+            <span className="text-xs font-mono text-slate-400">
+              Showing <strong className="text-emerald-400">{filteredAndSortedHistory.length}</strong> of {history.length} audits
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('audit-history-list');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 hover:border-emerald-500/40 transition-all cursor-pointer shadow-sm"
+              title="Jump directly to filtered Audit History list"
+            >
+              <span>Jump to List</span>
+              <ArrowDown className="w-3.5 h-3.5 text-emerald-400" />
+            </button>
+          </div>
+        </div>
+
+        {/* Search Bar Input */}
+        <div className="relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by Audit ID, Shipper Name, or Destination Country (e.g. 'AUD-2026-US-89211', 'Shenzhen', 'USA', 'Singapore')..."
+            className="w-full pl-11 pr-24 py-3 rounded-2xl bg-slate-950 border border-slate-700/80 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 shadow-inner transition-all"
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white text-xs font-mono border border-slate-700 transition-colors cursor-pointer"
+              title="Clear search query"
+            >
+              Clear ✕
+            </button>
+          ) : (
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-[10px] font-mono text-slate-500 bg-slate-900 border border-slate-800 hidden sm:inline-block">
+              Audit ID • Shipper • Country
+            </span>
+          )}
+        </div>
+
+        {/* Quick Filter Country & Scope Chips */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-xs">
+          <span className="text-slate-500 text-[11px] font-mono mr-1">Quick Country Filters:</span>
+          {['USA', 'EU', 'Singapore', 'UAE', 'UK', 'Japan', 'Australia'].map((c) => {
+            const isSelected = searchQuery.toLowerCase() === c.toLowerCase();
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  if (isSelected) {
+                    setSearchQuery('');
+                  } else {
+                    setSearchQuery(c);
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                  isSelected
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
+                    : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                {c}
+              </button>
+            );
+          })}
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setSelectedCountry('ALL');
+              }}
+              className="text-[11px] text-rose-400 hover:underline font-mono ml-2 cursor-pointer"
+            >
+              Reset Search
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* KPI Stat Cards Grid with Staggered Entrance Animation */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100 fill-mode-both">
         {/* Total Audits */}
@@ -1249,7 +1360,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       />
 
       {/* Main Table Card with Search & Filters */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500 delay-400 fill-mode-both">
+      <div id="audit-history-list" className="bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500 delay-400 fill-mode-both scroll-mt-20">
         {/* Control Toolbar */}
         <div className="p-5 border-b border-slate-800 space-y-4 bg-slate-900/95">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1260,7 +1371,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by Audit ID, shipper, consignee, document #, HS code, cargo description..."
+                placeholder="Filter audits by Audit ID, Shipper Name, or Destination Country..."
                 className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
               />
               {searchQuery && (
@@ -1411,9 +1522,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               )}
             </div>
 
-            <div className="text-slate-400 font-mono text-[11px]">
-              Showing <strong className="text-white">{filteredAndSortedHistory.length}</strong> of{' '}
-              <strong className="text-slate-300">{history.length}</strong> records
+            <div className="text-slate-400 font-mono text-[11px] flex items-center gap-2 flex-wrap">
+              {searchQuery && (
+                <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px]">
+                  Filtered by "{searchQuery}"
+                </span>
+              )}
+              <span>
+                Showing <strong className="text-white">{filteredAndSortedHistory.length}</strong> of{' '}
+                <strong className="text-slate-300">{history.length}</strong> records
+              </span>
             </div>
           </div>
         </div>
