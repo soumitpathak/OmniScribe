@@ -216,7 +216,26 @@ export function generateAuditPDF(audit: AuditResponse): void {
     doc.text(line, margin + contentWidth / 2 + 2, y + 10 + i * 4);
   });
 
-  y += 26;
+  y += 24;
+
+  // 3-Sentence Executive Compliance Posture Callout
+  if (audit.quick_summary) {
+    checkPageBreak(18);
+    doc.setFillColor(241, 245, 249);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(margin, y, contentWidth, 14, 1.5, 1.5, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.2);
+    doc.setTextColor(15, 23, 42);
+    doc.text('EXECUTIVE COMPLIANCE POSTURE (GEMINI 3-SENTENCE SYNTHESIS):', margin + 3, y + 4.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.4);
+    doc.setTextColor(51, 65, 85);
+    const splitSummary = doc.splitTextToSize(audit.quick_summary, contentWidth - 6);
+    doc.text(splitSummary, margin + 3, y + 8.5);
+    y += 17;
+  }
 
   // --- SECTION 1: SHIPMENT & ROUTING DOSSIER ---
   const entities = audit.extracted_entities || {

@@ -130,6 +130,7 @@ export default function App() {
       recommended_actions: Array.isArray(item.recommended_actions) ? item.recommended_actions : [],
       action_details: Array.isArray(item.action_details) ? item.action_details : [],
       agent_reasoning_trace: Array.isArray(item.agent_reasoning_trace) ? item.agent_reasoning_trace : [],
+      quick_summary: item.quick_summary || undefined,
     };
   };
 

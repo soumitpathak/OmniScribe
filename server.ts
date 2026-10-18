@@ -536,7 +536,80 @@ function executeDeterministicAudit(
     result.agent_reasoning_trace = [...regionTraces, ...filteredExisting];
   }
   result.audit_engine = 'OmniScribe Regulatory Rules & Statutory Classification Engine';
+  result.quick_summary = generateDeterministicQuickSummary(result);
   return result;
+}
+
+function generateDeterministicQuickSummary(audit: any): string {
+  const country = audit.destination_country || 'USA';
+  const status = audit.audit_status || 'FLAGGED';
+  const risk = typeof audit.risk_score === 'number' ? audit.risk_score : 50;
+  const items = audit.extracted_entities?.items || [];
+  const itemDesc = items[0]?.item_description || 'Commercial freight cargo';
+  const shipper = audit.extracted_entities?.shipper_country || 'foreign origin';
+  const discCount = audit.compliance_discrepancies?.length || 0;
+
+  if (status === 'APPROVED') {
+    return `This consignment of ${itemDesc.toLowerCase()} originating from ${shipper} destined for ${country} has successfully passed all statutory regulatory checks with an exceptional risk score of ${risk}/100. All declared Harmonized Tariff codes, Incoterms, and origin documentation comply fully with international customs requirements with zero discrepancies identified. The consignment is cleared for automated green-channel release and immediate onward logistics dispatch.`;
+  }
+
+  if (status === 'REJECTED') {
+    const topDisc = audit.compliance_discrepancies?.[0] || 'severe statutory violations and unpermitted cargo detected';
+    return `This inbound consignment of ${itemDesc.toLowerCase()} to ${country} has been assigned a critical compliance risk score of ${risk}/100 and held under mandatory quarantine. The audit identified severe regulatory non-compliance, notably: ${topDisc.replace(/\.$/, '')}. Logistics operators must immediately halt dispatch and obtain the requisite strategic export authorization or certified safety permits to avert formal seizure and financial penalties.`;
+  }
+
+  // FLAGGED
+  const topDisc = audit.compliance_discrepancies?.[0] || 'mandatory import documentation or tariff adjustments pending';
+  return `This consignment of ${itemDesc.toLowerCase()} entering ${country} has been flagged for conditional compliance review with a moderate risk score of ${risk}/100. The audit identified ${discCount} documentation discrepancy, specifically: ${topDisc.replace(/\.$/, '')}. Customs declarants must file the recommended statutory amendments and provide the mandated certificates prior to carrier discharge to ensure seamless entry release.`;
+}
+
+async function generateQuickSummaryWithGemini(audit: any): Promise<string> {
+  const country = audit.destination_country || 'USA';
+  const status = audit.audit_status || 'FLAGGED';
+  const risk = audit.risk_score || 50;
+  const items = audit.extracted_entities?.items || [];
+  const itemDesc = items[0]?.item_description || 'Commercial freight cargo';
+  const discrepancies = audit.compliance_discrepancies || [];
+  const actions = audit.recommended_actions || [];
+
+  if (!process.env.GEMINI_API_KEY || geminiQuotaExhausted) {
+    return generateDeterministicQuickSummary(audit);
+  }
+
+  try {
+    const prompt = `Consignment: "${itemDesc}".
+Origin: ${audit.extracted_entities?.shipper_country || 'Origin'}. Destination: ${country}.
+Status: ${status} (Risk Score: ${risk}/100, Level: ${audit.risk_level || 'MODERATE'}).
+Discrepancies: ${discrepancies.join('; ') || 'None'}.
+Remediation: ${actions.join('; ') || 'None'}.
+Duty Assessment: ${audit.duty_tariff_analysis?.estimated_duty_rate || 'Standard'}.
+
+Write exactly 3 concise, plain-English sentences summarizing the document's overall compliance posture.
+Sentence 1: State what was shipped, its routing, and the audit clearance status/risk rating.
+Sentence 2: Detail the primary compliance discrepancy or confirm clean statutory filing.
+Sentence 3: Provide the definitive executive operational directive (e.g. release consignment, place in bonded warehouse staging, or file mandated certification).
+Output ONLY the 3 plain-English sentences without markdown, bullets, or headers.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: 'You are OmniScribe Executive Compliance Director. Output strictly 3 plain-English sentences evaluating the shipment compliance posture.',
+        temperature: 0.2,
+      },
+    });
+
+    const text = response.text?.trim();
+    if (text && text.length > 20) {
+      return text;
+    }
+    return generateDeterministicQuickSummary(audit);
+  } catch (err: any) {
+    if (isQuotaOrBillingError(err)) {
+      geminiQuotaExhausted = true;
+    }
+    return generateDeterministicQuickSummary(audit);
+  }
 }
 
 function normalizeAuditResponse(
@@ -723,6 +796,11 @@ Please prioritize examining these specific sections and explicitly mention what 
         rawText
       );
       normalized.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
+      try {
+        normalized.quick_summary = await generateQuickSummaryWithGemini(normalized);
+      } catch (sumErr) {
+        normalized.quick_summary = generateDeterministicQuickSummary(normalized);
+      }
 
       return res.json(normalized);
     } catch (modelError: any) {
@@ -809,6 +887,11 @@ Return valid JSON.`,
         rawText
       );
       normalized.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
+      try {
+        normalized.quick_summary = await generateQuickSummaryWithGemini(normalized);
+      } catch (sumErr) {
+        normalized.quick_summary = generateDeterministicQuickSummary(normalized);
+      }
       return res.json(normalized);
     } catch (modelError: any) {
       if (isQuotaOrBillingError(modelError)) {
@@ -826,6 +909,23 @@ Return valid JSON.`,
     const country = (req.body?.destinationCountry || 'USA').toString();
     const fallback = executeDeterministicAudit(country, 'Standard Commercial Shipment');
     return res.json(fallback);
+  }
+});
+
+// Quick Summary endpoint powered by Gemini (Requirement: generate 3-sentence plain-English executive summary)
+app.post('/api/quick-summary', async (req, res) => {
+  try {
+    const audit = req.body?.audit || req.body;
+    if (!audit || typeof audit !== 'object') {
+      return res.status(400).json({ error: 'Valid audit dossier required' });
+    }
+    const summary = await generateQuickSummaryWithGemini(audit);
+    const engine = !process.env.GEMINI_API_KEY || geminiQuotaExhausted ? 'statutory_rules' : 'gemini-3.8-flash';
+    return res.json({ quick_summary: summary, engine });
+  } catch (err: any) {
+    console.warn('[OmniScribe Engine] Error generating quick summary:', err?.message);
+    const fallback = generateDeterministicQuickSummary(req.body?.audit || req.body || {});
+    return res.json({ quick_summary: fallback, engine: 'statutory_rules' });
   }
 });
 

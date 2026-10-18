@@ -10,6 +10,7 @@ import { AgentThoughtTrace } from './AgentThoughtTrace';
 import { ItemRiskFactorScale } from './ItemRiskFactorScale';
 import { ConfidenceScoreGauge } from './ConfidenceScoreGauge';
 import { PreemptiveActionsCard } from './PreemptiveActionsCard';
+import { QuickSummaryCard } from './QuickSummaryCard';
 import { generateAuditPDF } from '../utils/pdfGenerator';
 import { useToast } from '../context/ToastContext';
 import {
@@ -161,6 +162,9 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
   return (
     <div className="space-y-6">
+      {/* Quick Summary Card: Autonomous 3-Sentence Plain-English Executive Compliance Summary powered by Gemini */}
+      <QuickSummaryCard audit={audit} />
+
       {/* Top Banner & Quick Actions */}
       <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-5 shadow-2xl relative overflow-hidden">
         {/* Background glow matching status */}

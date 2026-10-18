@@ -81,6 +81,7 @@ export interface AuditResponse {
   action_details: RecommendedAction[];
   duty_tariff_analysis?: DutyTariffEstimate;
   agent_reasoning_trace?: string[];
+  quick_summary?: string;
   timestamp: string;
   document_file_name?: string;
   audit_engine?: string;

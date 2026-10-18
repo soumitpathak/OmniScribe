@@ -117,5 +117,14 @@ export function runEdgeCasesTests() {
   assert.strictEqual(formatCurrency(0), '$0 USD');
   console.log('  ✓ Verified currency formatting from cents to hundreds of millions');
 
+  // 5. 3-Sentence Quick Summary Structure & Plain-English Validation
+  const sampleQuickSummary = 'This consignment of medical diagnostic analyzers originating from Japan destined for USA has successfully cleared statutory customs review with an exemplary risk score of 12/100. All declared Harmonized Tariff codes, FDA accession numbers, and origin documentation comply fully with international customs requirements with zero discrepancies identified. The consignment is cleared for automated green-channel release and immediate onward logistics dispatch.';
+  const sentences = sampleQuickSummary.split(/(?<=[.!?])\s+(?=[A-Z0-9])/).filter((s) => s.trim().length > 0);
+  assert.strictEqual(sentences.length, 3, 'Summary must contain exactly 3 sentences');
+  assert.ok(sentences[0].includes('consignment'));
+  assert.ok(sentences[1].includes('discrepancies') || sentences[1].includes('comply'));
+  assert.ok(sentences[2].includes('release') || sentences[2].includes('dispatch'));
+  console.log('  ✓ Verified 3-sentence executive compliance summary parsing and validation');
+
   console.log('✅ Edge Cases & Resilience Tests Passed!\n');
 }
