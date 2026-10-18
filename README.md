@@ -57,6 +57,24 @@ export GEMINI_API_KEY="your-gemini-api-key"
 npm run dev
 ```
 
+### Deploy
+
+Build the container with Cloud Build and deploy it to Cloud Run. Create the
+Artifact Registry repository and the `GEMINI_API_KEY` Secret Manager secret
+before running these commands:
+
+```bash
+gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/omniscribe
+gcloud run deploy omniscribe \
+  --image REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/omniscribe \
+  --region REGION \
+  --allow-unauthenticated \
+  --set-secrets GEMINI_API_KEY=GEMINI_API_KEY:latest
+```
+
+The Dockerfile builds the frontend and starts the Node.js server on the `PORT`
+provided by Cloud Run.
+
 ---
 
 ## 📂 Repository Structure
