@@ -51,6 +51,7 @@ import {
   Legend,
   ReferenceLine,
 } from 'recharts';
+import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
 import { useToast } from '../context/ToastContext';
 
 interface DashboardPageProps {
@@ -525,6 +526,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Historical Consignment Risk Scores Over Time Chart */}
+      <HistoricalRiskTimelineChart
+        history={history}
+        onSelectAudit={onSelectAudit}
+        onNavigateToInitiate={onNavigateToInitiate}
+        onResetSeedData={onResetSeedData}
+      />
 
       {/* --- ANALYTICAL CHARTS SECTION (Requirements 5, 11, 12) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200 fill-mode-both">
