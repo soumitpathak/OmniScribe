@@ -133,37 +133,24 @@ export default function App() {
     };
   };
 
-  // Load audit history on mount (ONLY real audits initiated by the user, NO dummy seed data)
+  // Load audit history on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const SEED_IDS = new Set([
-            'AUD-2026-US-89211',
-            'AUD-2026-EU-77412',
-            'AUD-2026-UAE-44109',
-            'AUD-2026-SGP-10924',
-            'AUD-2026-UK-33128',
-            'AUD-2026-JP-55901',
-          ]);
-          // Purge any dummy seed records so dashboard is strictly user-audit based
-          const userAudits = parsed
-            .map(sanitizeAudit)
-            .filter((item) => !SEED_IDS.has(item.audit_id));
-
-          setHistory(userAudits);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(userAudits));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setHistory(parsed.map(sanitizeAudit));
           return;
         }
       }
-      // Start with completely clean slate - zero dummy data
-      setHistory([]);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      // Populate seed records if storage is empty so dashboard charts are populated
+      const initial = SEED_AUDIT_HISTORY.map(sanitizeAudit);
+      setHistory(initial);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
     } catch (e) {
       console.warn('Failed to load history from localStorage:', e);
-      setHistory([]);
+      setHistory(SEED_AUDIT_HISTORY.map(sanitizeAudit));
     }
   }, []);
 
@@ -208,14 +195,14 @@ export default function App() {
   };
 
   const handleResetSeedData = () => {
-    // Clear back to clean user state
-    setHistory([]);
+    const cleanSeeds = SEED_AUDIT_HISTORY.map(sanitizeAudit);
+    setHistory(cleanSeeds);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanSeeds));
     } catch (e) {
       console.warn(e);
     }
-    toast.info('Data Reset', 'Dashboard reset to clean state with 0 audit records.');
+    toast.success('Sample Records Loaded', `Loaded ${cleanSeeds.length} enterprise audit records across global jurisdictions.`);
   };
 
   const handleSelectAudit = (audit: AuditResponse) => {

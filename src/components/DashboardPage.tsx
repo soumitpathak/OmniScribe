@@ -1523,6 +1523,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         allHistory={history}
         filteredHistory={filteredAndSortedHistory}
       />
+
+      {/* Compare Audits Modal */}
+      <CompareAuditsModal
+        isOpen={isCompareOpen}
+        onClose={() => setIsCompareOpen(false)}
+        history={history}
+        initialAuditAId={selectedForCompare[0]}
+        initialAuditBId={selectedForCompare[1]}
+        onSelectAudit={onSelectAudit}
+      />
     </div>
   );
 };
