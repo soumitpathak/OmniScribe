@@ -7,7 +7,8 @@ import { RegulatoryRulesModal } from './components/RegulatoryRulesModal';
 import { AuditHistoryModal } from './components/AuditHistoryModal';
 import { SystemArchitectureModal } from './components/SystemArchitectureModal';
 import { HSCodeLookupModal } from './components/HSCodeLookupModal';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsModal, ComplianceSettings, DEFAULT_SETTINGS, SETTINGS_STORAGE_KEY } from './components/SettingsModal';
+import { HighRiskAlertBanner } from './components/HighRiskAlertBanner';
 import { HomePage } from './components/HomePage';
 import { DashboardPage } from './components/DashboardPage';
 import { SEED_AUDIT_HISTORY } from './data/seedAudits';
@@ -37,6 +38,45 @@ export default function App() {
   const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
+
+  // User-defined compliance settings including high-risk threshold
+  const [settings, setSettings] = useState<ComplianceSettings>(() => {
+    try {
+      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (stored) {
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      }
+    } catch (e) {
+      console.warn('Failed to load settings:', e);
+    }
+    return DEFAULT_SETTINGS;
+  });
+
+  // Active high-risk visual alert banner state
+  const [highRiskAlertAudit, setHighRiskAlertAudit] = useState<AuditResponse | null>(null);
+
+  // Trigger desktop-style browser notification
+  const triggerHighRiskDesktopNotification = (audit: AuditResponse, threshold: number) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification(`⚠️ High-Risk Consignment Flagged (${audit.risk_score}/100)`, {
+          body: `Audit ${audit.audit_id} exceeded your threshold (score > ${threshold}). Consignment held for ${audit.destination_country}.`,
+          icon: '/favicon.ico',
+        });
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then((perm) => {
+          if (perm === 'granted') {
+            new Notification(`⚠️ High-Risk Consignment Flagged (${audit.risk_score}/100)`, {
+              body: `Audit ${audit.audit_id} exceeded your threshold (score > ${threshold}).`,
+            });
+          }
+        }).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('Desktop notification notice:', e);
+    }
+  };
 
   const sanitizeAudit = (item: any): AuditResponse => {
     return {
@@ -248,6 +288,17 @@ export default function App() {
       setCurrentAudit(result);
       saveAuditToHistory(result);
 
+      // Evaluate user-defined high-risk threshold setting (e.g., score > 75)
+      const highRiskThreshold = settings.highRiskThreshold ?? 75;
+      if (result.risk_score > highRiskThreshold) {
+        if (settings.enableVisualAlertBanner !== false) {
+          setHighRiskAlertAudit(result);
+        }
+        if (settings.enableDesktopNotifications !== false) {
+          triggerHighRiskDesktopNotification(result, highRiskThreshold);
+        }
+      }
+
       // Trigger audit completion toast
       const isApproved = result.audit_status === 'APPROVED';
       const isFlagged = result.audit_status === 'FLAGGED';
@@ -275,6 +326,61 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleTestHighRiskAlert = (threshold: number) => {
+    const candidate: AuditResponse = history.find((a) => a.risk_score > threshold) || {
+      audit_id: `AUD-ALERT-${Date.now().toString().slice(-4)}`,
+      audit_status: 'REJECTED' as const,
+      risk_score: Math.max(88, threshold + 5),
+      risk_level: 'CRITICAL' as const,
+      destination_country: selectedCountry || 'USA',
+      regulatory_framework: 'U.S. Customs and Border Protection (CBP) / ACE',
+      timestamp: new Date().toISOString(),
+      extracted_entities: {
+        document_type: 'Commercial Invoice & Hazardous Goods Declaration',
+        document_number: 'ALERT-INV-8921',
+        shipper_name: 'Shenzhen HyperPower Energy Tech Co., Ltd.',
+        shipper_address: 'Building 4, High-Tech Industrial Park, Shenzhen, China',
+        shipper_country: 'China',
+        consignee_name: 'VoltWave Logistics & Storage Inc.',
+        consignee_address: 'Long Beach, CA, USA',
+        consignee_country: 'USA',
+        port_of_loading: 'Shenzhen Port',
+        port_of_discharge: 'Port of Los Angeles',
+        mode_of_transport: 'Ocean Container Freight',
+        incoterms: 'CIF Long Beach',
+        currency: 'USD',
+        total_declared_value: 142500,
+        items: [
+          {
+            item_description: 'Lithium-Ion Polymer Battery Modules (UN3480 Class 9)',
+            declared_hs_code: '8507.60.00',
+            verified_hs_code: '8507.60.0000',
+            quantity: 300,
+            unit: 'Units',
+            unit_value: 475,
+            total_value: 142500,
+            country_of_origin: 'China',
+            hazardous_class: 'Class 9 Dangerous Goods (UN3480)',
+            compliance_flags: ['Missing UN 38.3 Test Report', 'Section 301 Ad Valorem (25%)'],
+          },
+        ],
+      },
+      compliance_discrepancies: [
+        'CRITICAL BREACH: Missing UN 38.3 Lithium Battery Safety Test Summary documentation required under 49 CFR § 173.185.',
+        'Heading 8507 lithium articles of Chinese origin subject to 25% Section 301 tariff duty surcharge not itemized.',
+      ],
+      discrepancy_details: [],
+      recommended_actions: [
+        'Halt customs entry processing: Obtain manufacturer UN 38.3 Test Summary immediately.',
+      ],
+      action_details: [],
+      agent_reasoning_trace: [],
+    };
+
+    setHighRiskAlertAudit(candidate);
+    triggerHighRiskDesktopNotification(candidate, threshold);
   };
 
   // If user is not authenticated, render the professional OmniScribe HomePage
@@ -320,6 +426,19 @@ export default function App() {
         selectedCountry={selectedCountry}
         onSelectCountry={setSelectedCountry}
       />
+
+      {/* High-Risk Threshold Visual Alert Banner */}
+      {highRiskAlertAudit && (
+        <HighRiskAlertBanner
+          audit={highRiskAlertAudit}
+          threshold={settings.highRiskThreshold ?? 75}
+          onDismiss={() => setHighRiskAlertAudit(null)}
+          onInspect={(audit) => {
+            handleSelectAudit(audit);
+            setHighRiskAlertAudit(null);
+          }}
+        />
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -489,6 +608,8 @@ export default function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        onSettingsChange={setSettings}
+        onTestHighRiskAlert={handleTestHighRiskAlert}
       />
     </div>
   );

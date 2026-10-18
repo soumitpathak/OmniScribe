@@ -1,10 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Settings, Download, Upload, Sliders, Shield, AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react';
+import {
+  X,
+  Settings,
+  Download,
+  Upload,
+  Sliders,
+  Shield,
+  AlertTriangle,
+  CheckCircle2,
+  RotateCcw,
+  Bell,
+  Flame,
+  ShieldAlert,
+} from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 export interface ComplianceSettings {
+  highRiskThreshold: number; // e.g. score > 75
   criticalRiskThreshold: number;
   moderateRiskThreshold: number;
+  enableDesktopNotifications: boolean;
+  enableVisualAlertBanner: boolean;
   defaultDestinationCountry: string;
   autoQuarantineHazardous: boolean;
   enforceSection301Screening: boolean;
@@ -14,8 +30,11 @@ export interface ComplianceSettings {
 }
 
 export const DEFAULT_SETTINGS: ComplianceSettings = {
+  highRiskThreshold: 75,
   criticalRiskThreshold: 70,
   moderateRiskThreshold: 30,
+  enableDesktopNotifications: true,
+  enableVisualAlertBanner: true,
   defaultDestinationCountry: 'USA',
   autoQuarantineHazardous: true,
   enforceSection301Screening: true,
@@ -24,18 +43,20 @@ export const DEFAULT_SETTINGS: ComplianceSettings = {
   notificationEmail: 'compliance-desk@enterprise-logistics.com',
 };
 
-const SETTINGS_STORAGE_KEY = 'omniscribe_compliance_settings_v1';
+export const SETTINGS_STORAGE_KEY = 'omniscribe_compliance_settings_v1';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSettingsChange?: (newSettings: ComplianceSettings) => void;
+  onTestHighRiskAlert?: (threshold: number) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   onSettingsChange,
+  onTestHighRiskAlert,
 }) => {
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +86,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Test Desktop Notification
+  const handleTestNotification = async () => {
+    if (typeof window === 'undefined') return;
+
+    if (!('Notification' in window)) {
+      toast.info('Browser Notification Notice', 'Native Notification API is not supported in this browser environment; visual alert banners will be used.');
+      return;
+    }
+
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification('⚠️ OmniScribe High-Risk Alert (Test)', {
+          body: `High-risk threshold set to score > ${settings.highRiskThreshold}. Alerts are active!`,
+          icon: '/favicon.ico',
+        });
+        toast.success('Notification Sent', 'Desktop test notification triggered.');
+      } else if (Notification.permission !== 'denied') {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          new Notification('⚠️ OmniScribe High-Risk Alert (Test)', {
+            body: `Permission granted! High-risk threshold set to score > ${settings.highRiskThreshold}.`,
+          });
+          toast.success('Notification Enabled', 'Desktop notifications permitted.');
+        } else {
+          toast.warning('Permission Denied', 'Desktop notifications were not granted. Visual alert banners will be used instead.');
+        }
+      } else {
+        toast.warning('Permission Denied', 'Desktop notifications are blocked in your browser settings. Visual alert banners will still display.');
+      }
+    } catch (err: any) {
+      console.warn('Notification test notice:', err);
+      toast.info('Notification Handled', 'Visual alert banners are enabled for all high-risk scores.');
+    }
+  };
+
+  // Preview Visual Alert Banner
+  const handlePreviewVisualAlert = () => {
+    if (onTestHighRiskAlert) {
+      onTestHighRiskAlert(settings.highRiskThreshold);
+      toast.info('Visual Alert Banner Triggered', `Previewing alert banner for risk score > ${settings.highRiskThreshold}.`);
+      onClose();
+    } else {
+      toast.error('Alert Preview', 'Visual alert preview triggered.');
+    }
+  };
+
   // Export Settings to JSON file
   const handleExportConfig = () => {
     try {
@@ -92,14 +159,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
 
-        // Basic validation
         if (typeof parsed !== 'object' || parsed === null) {
           throw new Error('Invalid JSON configuration object');
         }
 
         const merged: ComplianceSettings = {
+          highRiskThreshold: Number(parsed.highRiskThreshold) || DEFAULT_SETTINGS.highRiskThreshold,
           criticalRiskThreshold: Number(parsed.criticalRiskThreshold) || DEFAULT_SETTINGS.criticalRiskThreshold,
           moderateRiskThreshold: Number(parsed.moderateRiskThreshold) || DEFAULT_SETTINGS.moderateRiskThreshold,
+          enableDesktopNotifications: Boolean(parsed.enableDesktopNotifications ?? DEFAULT_SETTINGS.enableDesktopNotifications),
+          enableVisualAlertBanner: Boolean(parsed.enableVisualAlertBanner ?? DEFAULT_SETTINGS.enableVisualAlertBanner),
           defaultDestinationCountry: parsed.defaultDestinationCountry || DEFAULT_SETTINGS.defaultDestinationCountry,
           autoQuarantineHazardous: Boolean(parsed.autoQuarantineHazardous ?? DEFAULT_SETTINGS.autoQuarantineHazardous),
           enforceSection301Screening: Boolean(parsed.enforceSection301Screening ?? DEFAULT_SETTINGS.enforceSection301Screening),
@@ -131,7 +200,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/95">
           <div className="flex items-center gap-3">
@@ -143,14 +212,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 Compliance Threshold & Agent Settings
               </h2>
               <p className="text-xs text-slate-400">
-                Configure regulatory cutoff triggers, screening rules, and export configuration profiles
+                Define high-risk thresholds, automated alert triggers, and regulatory screening rules
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -158,64 +227,146 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Settings Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-          {/* Section 1: Risk Score Cutoff Thresholds */}
-          <div className="space-y-4 p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
+          {/* Section 1: User-Defined High-Risk Threshold & Alert Notification (Requested Requirement) */}
+          <div className="space-y-4 p-5 rounded-2xl bg-gradient-to-b from-rose-950/20 to-slate-950/80 border-2 border-rose-500/40 shadow-xl">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-emerald-400" />
-                Risk Cutoff Thresholds (0 - 100)
+              <span className="text-xs font-bold text-rose-300 flex items-center gap-2">
+                <Flame className="w-4 h-4 text-rose-400 animate-pulse" />
+                <span>High-Risk Threshold & Instant Alert Configuration</span>
               </span>
-              <span className="text-[11px] font-mono text-slate-400">Agent Status Trigger</span>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold">
+                Score &gt; {settings.highRiskThreshold}
+              </span>
             </div>
 
-            {/* Critical Threshold Slider */}
-            <div className="space-y-1.5">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Define the cutoff score for high-risk consignments. When any audited document exceeds this value (e.g. score &gt; {settings.highRiskThreshold}), OmniScribe will immediately trigger a desktop-style browser notification and a visual alert banner.
+            </p>
+
+            {/* Slider & Direct Number Input */}
+            <div className="space-y-2 p-3.5 rounded-xl bg-slate-900/80 border border-slate-800">
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-medium">Critical Risk Cutoff (Trigger REJECTED / Quarantine):</span>
-                <span className="font-mono font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
-                  {settings.criticalRiskThreshold} / 100
-                </span>
+                <label htmlFor="high-risk-input" className="text-slate-200 font-semibold flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                  <span>High-Risk Trigger Score Cutoff:</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="high-risk-input"
+                    type="number"
+                    min="40"
+                    max="99"
+                    value={settings.highRiskThreshold}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) {
+                        setSettings({
+                          ...settings,
+                          highRiskThreshold: Math.min(99, Math.max(40, val)),
+                        });
+                      }
+                    }}
+                    className="w-16 px-2 py-1 rounded-lg bg-slate-950 border border-rose-500/50 text-right font-mono font-bold text-white text-xs focus:outline-none focus:ring-1 focus:ring-rose-500"
+                  />
+                  <span className="text-slate-400 font-mono">/ 100</span>
+                </div>
               </div>
+
               <input
                 type="range"
                 min="50"
-                max="90"
-                value={settings.criticalRiskThreshold}
+                max="95"
+                step="1"
+                value={settings.highRiskThreshold}
                 onChange={(e) =>
-                  setSettings({ ...settings, criticalRiskThreshold: parseInt(e.target.value, 10) })
+                  setSettings({
+                    ...settings,
+                    highRiskThreshold: parseInt(e.target.value, 10),
+                  })
                 }
                 className="w-full accent-rose-500 cursor-pointer"
               />
-              <p className="text-[10px] text-slate-500">
-                Any audited manifest with a risk score at or above this threshold will immediately mandate customs hold.
-              </p>
+
+              <div className="flex justify-between text-[10px] font-mono text-slate-500 pt-0.5">
+                <span>50 (Sensitive)</span>
+                <span className="text-rose-400 font-bold">Recommended: 75</span>
+                <span>95 (Permissive)</span>
+              </div>
             </div>
 
-            {/* Moderate Threshold Slider */}
-            <div className="space-y-1.5 pt-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-medium">Moderate Risk Cutoff (Trigger FLAGGED Review):</span>
-                <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
-                  {settings.moderateRiskThreshold} / 100
-                </span>
+            {/* Alert Channels & Test Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Desktop Notification Channel */}
+              <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                <label className="flex items-start justify-between gap-2 cursor-pointer">
+                  <div>
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <Bell className="w-3.5 h-3.5 text-cyan-400" />
+                      Desktop Browser Notification
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Triggers native browser desktop notifications when tab is active or minimized.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableDesktopNotifications}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        enableDesktopNotifications: e.target.checked,
+                      })
+                    }
+                    className="w-4 h-4 rounded text-rose-500 bg-slate-800 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleTestNotification}
+                  className="w-full py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-cyan-300 border border-slate-700 transition-colors cursor-pointer"
+                >
+                  Test Desktop Notification
+                </button>
               </div>
-              <input
-                type="range"
-                min="15"
-                max="49"
-                value={settings.moderateRiskThreshold}
-                onChange={(e) =>
-                  setSettings({ ...settings, moderateRiskThreshold: parseInt(e.target.value, 10) })
-                }
-                className="w-full accent-amber-500 cursor-pointer"
-              />
-              <p className="text-[10px] text-slate-500">
-                Audits scoring between this threshold and Critical are flagged for broker review and missing documentation.
-              </p>
+
+              {/* Visual Alert Banner Channel */}
+              <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+                <label className="flex items-start justify-between gap-2 cursor-pointer">
+                  <div>
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                      Visual Alert Banner
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Displays a glowing top banner across workspace with audit details & action link.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={settings.enableVisualAlertBanner}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        enableVisualAlertBanner: e.target.checked,
+                      })
+                    }
+                    className="w-4 h-4 rounded text-rose-500 bg-slate-800 border-slate-700 mt-1 cursor-pointer"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handlePreviewVisualAlert}
+                  className="w-full py-1.5 px-2.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-[11px] font-mono text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
+                >
+                  Preview Alert Banner
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Section 2: Statutory Screening Rules */}
+          {/* Section 2: Secondary Statutory Screening Rules */}
           <div className="space-y-3 p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
             <span className="text-xs font-bold text-slate-200 flex items-center gap-2">
               <Shield className="w-4 h-4 text-cyan-400" />
@@ -285,7 +436,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) =>
                   setSettings({ ...settings, defaultDestinationCountry: e.target.value })
                 }
-                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
               >
                 <option value="USA">🇺🇸 United States (CBP / ACE)</option>
                 <option value="EU">🇪🇺 European Union (TARIC / ICS2)</option>
@@ -351,7 +502,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={handleResetDefaults}
-              className="px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 text-xs transition-colors flex items-center gap-1"
+              className="px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-900 text-xs transition-colors flex items-center gap-1 cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
               <span>Restore Defaults</span>
@@ -360,7 +511,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition-colors cursor-pointer"
             >
               Done
             </button>
