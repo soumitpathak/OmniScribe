@@ -52,6 +52,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
+import { BulkExportModal } from './BulkExportModal';
 import { useToast } from '../context/ToastContext';
 
 interface DashboardPageProps {
@@ -84,6 +85,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [selectedCountry, setSelectedCountry] = useState<string>('ALL');
   const [selectedRiskRange, setSelectedRiskRange] = useState<string>('ALL'); // 'ALL' | 'LOW' | 'MODERATE' | 'CRITICAL'
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
+  const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
 
   // Sorting State
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -426,15 +428,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
 
         <div className="relative z-10 flex flex-wrap sm:flex-nowrap items-center gap-3">
-          {/* Requirement 3: Export Audit Data Button */}
+          {/* Bulk Export Feature: CSV Summary */}
           <button
-            onClick={handleExportAuditData}
+            onClick={() => setIsBulkExportOpen(true)}
             type="button"
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs shadow-md transition-all cursor-pointer hover:border-slate-600"
-            title="Download full CSV dataset with audit ID, destination, risk score, and status"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-800/90 hover:from-slate-700 hover:to-slate-700/90 text-slate-100 border border-slate-700 hover:border-emerald-500/50 font-bold text-xs shadow-md transition-all cursor-pointer group"
+            title="Download formatted CSV summary of historical audits for external reporting and record-keeping"
           >
-            <Download className="w-4 h-4 text-cyan-400" />
-            <span>Export Audit Data</span>
+            <Download className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+            <span>Bulk Export CSV</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-slate-900 text-emerald-400/90 border border-slate-800 font-semibold">
+              {history.length}
+            </span>
           </button>
 
           {onOpenSettings && (
@@ -871,15 +876,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             {/* Quick action tools */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
-              {/* Requirement 3: Export Audit Data Button */}
+              {/* Bulk Export CSV Button */}
               <button
-                onClick={handleExportAuditData}
+                onClick={() => setIsBulkExportOpen(true)}
                 type="button"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
-                title="Download CSV report of audit records"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-emerald-500/40 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
+                title="Download CSV summary of historical audits for external reporting"
               >
-                <Download className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Export Audit Data</span>
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Bulk Export CSV</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                  {filteredAndSortedHistory.length}
+                </span>
               </button>
 
               <button
@@ -1366,6 +1374,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           )}
         </div>
       </div>
+
+      {/* Bulk Export Modal */}
+      <BulkExportModal
+        isOpen={isBulkExportOpen}
+        onClose={() => setIsBulkExportOpen(false)}
+        allHistory={history}
+        filteredHistory={filteredAndSortedHistory}
+      />
     </div>
   );
 };
