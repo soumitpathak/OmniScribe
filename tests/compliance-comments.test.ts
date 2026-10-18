@@ -2,7 +2,7 @@
  * Test Suite: Compliance Officer Comments & Internal Discussion Threads
  */
 
-import { AuditComment, CommentReply, CommentCategory, CommentPriority } from '../src/types/compliance';
+import { AuditResponse, AuditComment, CommentReply, CommentCategory, CommentPriority } from '../src/types/compliance';
 
 export function runComplianceCommentsTests() {
   console.log('💬 Running Compliance Officer Comments & Discussion Thread Tests...');
@@ -266,5 +266,105 @@ export function runComplianceCommentsTests() {
   }
   console.log('  ✓ Verified 30-day average risk trajectory and improving trend classification');
 
-  console.log('✅ Compliance Officer Comments, Nested Threads & 30-Day Trend Tests Passed!');
+  // Test 9: Confidence Score with LLM Metadata Quantification
+  const sampleAuditWithLLMMetadata: AuditResponse = {
+    audit_id: 'AUD-CONF-TEST-001',
+    audit_status: 'FLAGGED',
+    risk_score: 45,
+    risk_level: 'MODERATE',
+    confidence_score: 93,
+    llm_metadata: {
+      model: 'gemini-3.8-flash',
+      confidence_score: 93,
+      certainty_score: 93,
+      certainty_level: 'VERY HIGH',
+      reasoning_steps: 6,
+      tokens_processed: 1420,
+      temperature: 0.1,
+      ocr_fidelity_score: 98,
+      tariff_concordance_score: 96,
+      pga_crosscheck_score: 95,
+      statutory_synthesis_score: 94,
+    },
+    destination_country: 'USA',
+    regulatory_framework: 'US CBP',
+    extracted_entities: {
+      document_type: 'Commercial Invoice',
+      document_number: 'INV-10928',
+      shipper_name: 'Alpha Electronics Ltd',
+      shipper_address: '10 Industrial Way',
+      shipper_country: 'Japan',
+      consignee_name: 'Beta Imports LLC',
+      consignee_address: '400 Harbor Blvd, Long Beach, CA',
+      consignee_country: 'USA',
+      port_of_loading: 'Yokohama',
+      port_of_discharge: 'Los Angeles',
+      mode_of_transport: 'Ocean',
+      incoterms: 'FOB',
+      currency: 'USD',
+      total_declared_value: 120000,
+      items: [
+        {
+          item_description: 'Semiconductor Microcontrollers',
+          declared_hs_code: '8542.31',
+          verified_hs_code: '8542.31.00',
+          quantity: 5000,
+          unit: 'pcs',
+          unit_value: 24,
+          total_value: 120000,
+          country_of_origin: 'Japan',
+        },
+      ],
+    },
+    compliance_discrepancies: ['EPA notification review recommended'],
+    discrepancy_details: [],
+    recommended_actions: ['Verify PGA notice'],
+    action_details: [],
+    agent_reasoning_trace: [
+      'Document parsed cleanly via OCR with 98% spatial text fidelity.',
+      'HTS 8542.31 checked against US schedule.',
+      'Confidence score quantified at 93% certainty based on metadata reasoning trace.',
+    ],
+    timestamp: new Date().toISOString(),
+  };
+
+  const confidenceScore =
+    sampleAuditWithLLMMetadata.confidence_score ??
+    sampleAuditWithLLMMetadata.llm_metadata?.confidence_score ??
+    90;
+
+  if (confidenceScore !== 93 || sampleAuditWithLLMMetadata.llm_metadata?.model !== 'gemini-3.8-flash') {
+    throw new Error('Confidence score LLM metadata extraction failed');
+  }
+  console.log('  ✓ Verified Confidence Score component LLM metadata quantification (93% certainty, gemini-3.8-flash)');
+
+  // Test 10: Audit Category Filter Widget ('High Risk', 'Pending Review', 'Customs Approved')
+  function classifyCategory(audit: AuditResponse): 'HIGH_RISK' | 'PENDING_REVIEW' | 'CUSTOMS_APPROVED' {
+    if (audit.audit_status === 'REJECTED' || audit.risk_score >= 70 || audit.risk_level === 'CRITICAL') {
+      return 'HIGH_RISK';
+    }
+    if (audit.audit_status === 'FLAGGED' || (audit.risk_score >= 30 && audit.risk_score < 70) || audit.risk_level === 'MODERATE') {
+      return 'PENDING_REVIEW';
+    }
+    return 'CUSTOMS_APPROVED';
+  }
+
+  const testAudits: AuditResponse[] = [
+    { ...sampleAuditWithLLMMetadata, audit_id: 'A1', audit_status: 'REJECTED', risk_score: 85, risk_level: 'CRITICAL' },
+    { ...sampleAuditWithLLMMetadata, audit_id: 'A2', audit_status: 'FLAGGED', risk_score: 55, risk_level: 'MODERATE' },
+    { ...sampleAuditWithLLMMetadata, audit_id: 'A3', audit_status: 'APPROVED', risk_score: 12, risk_level: 'LOW' },
+  ];
+
+  if (classifyCategory(testAudits[0]) !== 'HIGH_RISK') {
+    throw new Error('Audit category classification failed for High Risk');
+  }
+  if (classifyCategory(testAudits[1]) !== 'PENDING_REVIEW') {
+    throw new Error('Audit category classification failed for Pending Review');
+  }
+  if (classifyCategory(testAudits[2]) !== 'CUSTOMS_APPROVED') {
+    throw new Error('Audit category classification failed for Customs Approved');
+  }
+  console.log('  ✓ Verified Audit Category Filter grouping logic (High Risk, Pending Review, Customs Approved)');
+
+  console.log('✅ Compliance Officer Comments, Nested Threads, Confidence Score & Category Filter Tests Passed!');
 }

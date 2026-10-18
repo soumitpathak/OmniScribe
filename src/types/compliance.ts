@@ -67,11 +67,30 @@ export interface DutyTariffEstimate {
   estimated_duty_amount?: number;
 }
 
+export type AuditCategory = 'ALL' | 'HIGH_RISK' | 'PENDING_REVIEW' | 'CUSTOMS_APPROVED';
+
+export interface LLMMetadata {
+  model?: string;
+  confidence_score?: number; // 0 to 100
+  certainty_score?: number; // 0 to 100
+  certainty_level?: 'VERY HIGH' | 'HIGH' | 'SUBSTANTIAL' | 'MODERATE' | 'LOW';
+  reasoning_steps?: number;
+  tokens_processed?: number;
+  temperature?: number;
+  ocr_fidelity_score?: number;
+  tariff_concordance_score?: number;
+  pga_crosscheck_score?: number;
+  statutory_synthesis_score?: number;
+  evaluation_notes?: string;
+}
+
 export interface AuditResponse {
   audit_id: string;
   audit_status: AuditStatus;
   risk_score: number; // 0 to 100
   risk_level: RiskLevel;
+  confidence_score?: number; // 0 to 100 certainty quantifying how certain the agent is about findings
+  llm_metadata?: LLMMetadata;
   destination_country: string;
   regulatory_framework: string;
   extracted_entities: ExtractedEntities;

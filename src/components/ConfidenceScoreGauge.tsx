@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AuditResponse } from '../types/compliance';
-import { Sparkles, Info, CheckCircle2, ShieldCheck, HelpCircle, Layers } from 'lucide-react';
+import { Sparkles, Info, CheckCircle2, ShieldCheck, Cpu, Layers } from 'lucide-react';
 
 interface ConfidenceScoreGaugeProps {
   audit: AuditResponse;
@@ -11,12 +11,25 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
   const [showDetails, setShowDetails] = useState(false);
 
   // Compute a deterministic, mathematically grounded AI Confidence / Certainty score
-  // based on document legibility, entity completeness, HS code verification, and reasoning trace
-  const computeCertainty = () => {
+  // utilizing the LLM's metadata to quantify how certain the agent is about its audit findings
+  const computeCertainty = (): number => {
     if (typeof overrideScore === 'number') {
       return Math.max(10, Math.min(100, Math.round(overrideScore)));
     }
 
+    // Primary: LLM agent confidence score from response metadata
+    if (typeof audit.confidence_score === 'number') {
+      return Math.max(10, Math.min(100, Math.round(audit.confidence_score)));
+    }
+    if (typeof audit.llm_metadata?.confidence_score === 'number') {
+      return Math.max(10, Math.min(100, Math.round(audit.llm_metadata.confidence_score)));
+    }
+    if (typeof audit.llm_metadata?.certainty_score === 'number') {
+      return Math.max(10, Math.min(100, Math.round(audit.llm_metadata.certainty_score)));
+    }
+
+    // Secondary fallback: Synthesized model confidence based on document completeness,
+    // statutory classification concordance, and multi-step reasoning traces
     let base = 88;
     const entities = audit.extracted_entities;
 
@@ -42,32 +55,35 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
       base += 1;
     }
 
-    // Clamp between 70 and 99% for high-accuracy Gemini 3.8 Multimodal inference
+    // Clamp between 70 and 99% for high-accuracy Gemini Multimodal inference
     return Math.min(99, Math.max(72, base));
   };
 
   const certaintyScore = computeCertainty();
 
-  // Sub-factor breakdown
+  const modelName = audit.llm_metadata?.model || 'Gemini 3.8 Flash';
+  const reasoningStepsCount = audit.llm_metadata?.reasoning_steps || audit.agent_reasoning_trace?.length || 5;
+
+  // Sub-factor breakdown with LLM metadata support
   const factors = [
     {
       label: 'OCR & Multimodal Entity Extraction',
-      score: audit.extracted_entities?.items?.length ? 98 : 92,
+      score: audit.llm_metadata?.ocr_fidelity_score || (audit.extracted_entities?.items?.length ? 98 : 92),
       note: 'High-density spatial text and tabular field extraction',
     },
     {
       label: 'Statutory HS Tariff Concordance',
-      score: audit.extracted_entities?.items?.some((i) => i.verified_hs_code) ? 96 : 89,
+      score: audit.llm_metadata?.tariff_concordance_score || (audit.extracted_entities?.items?.some((i) => i.verified_hs_code) ? 96 : 89),
       note: `Cross-verified against ${audit.destination_country} customs tariff schedule`,
     },
     {
       label: 'Partner Agency (PGA) Cross-Check',
-      score: audit.duty_tariff_analysis?.applicable_agencies?.length ? 97 : 91,
+      score: audit.llm_metadata?.pga_crosscheck_score || (audit.duty_tariff_analysis?.applicable_agencies?.length ? 97 : 91),
       note: 'Screened against hazardous goods, export controls, and sanction lists',
     },
     {
       label: 'Regulatory Synthesis & Reasoning',
-      score: audit.agent_reasoning_trace?.length ? 96 : 90,
+      score: audit.llm_metadata?.statutory_synthesis_score || (audit.agent_reasoning_trace?.length ? 96 : 90),
       note: 'Multi-step statutory legal reasoning and penalty risk evaluation',
     },
   ];
@@ -85,16 +101,16 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
   const needleAngle = -90 + (certaintyScore / 100) * 180;
 
   // Tier classification
-  let tierLabel = 'VERY HIGH CERTAINTY';
+  let tierLabel = audit.llm_metadata?.certainty_level || 'VERY HIGH CERTAINTY';
   let tierBadgeBg = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
   let meterGradientStart = '#06b6d4'; // cyan
   let meterGradientEnd = '#10b981'; // emerald
 
   if (certaintyScore < 85) {
-    tierLabel = 'SUBSTANTIAL CERTAINTY';
+    tierLabel = audit.llm_metadata?.certainty_level || 'SUBSTANTIAL CERTAINTY';
     tierBadgeBg = 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30';
   } else if (certaintyScore < 75) {
-    tierLabel = 'MODERATE CERTAINTY';
+    tierLabel = audit.llm_metadata?.certainty_level || 'MODERATE CERTAINTY';
     tierBadgeBg = 'bg-amber-500/15 text-amber-400 border-amber-500/30';
     meterGradientStart = '#f59e0b';
     meterGradientEnd = '#06b6d4';
@@ -109,10 +125,15 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
       />
 
       <div className="w-full flex items-center justify-between mb-2">
-        <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase font-mono flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>AI Audit Certainty</span>
-        </span>
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="text-xs font-semibold tracking-wider text-slate-300 uppercase font-mono">
+            Confidence Score
+          </span>
+          <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/30">
+            LLM METADATA
+          </span>
+        </div>
         <span className={`px-2 py-0.5 rounded text-[11px] font-bold border font-mono ${tierBadgeBg}`}>
           {tierLabel}
         </span>
@@ -186,7 +207,7 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
             <span className="text-sm font-bold text-cyan-400 ml-0.5">%</span>
           </span>
           <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
-            Model Confidence
+            Agent Certainty
           </span>
         </div>
       </div>
@@ -198,8 +219,19 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
         <span className="text-emerald-400">100%</span>
       </div>
 
+      {/* LLM Metadata Summary Bar */}
+      <div className="w-full mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+        <span className="flex items-center gap-1 text-slate-300">
+          <Cpu className="w-3 h-3 text-cyan-400" />
+          <span>{modelName}</span>
+        </span>
+        <span className="text-cyan-400 font-semibold">
+          {reasoningStepsCount} Reasoning Traces
+        </span>
+      </div>
+
       {/* Confidence Sub-metrics / Toggle Details */}
-      <div className="mt-3 pt-2.5 border-t border-slate-800/80 w-full">
+      <div className="mt-2 pt-2 border-t border-slate-800/80 w-full">
         <button
           type="button"
           onClick={() => setShowDetails(!showDetails)}
@@ -207,7 +239,7 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
         >
           <span className="flex items-center gap-1.5 font-medium">
             <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Multimodal Reasoning Fidelity</span>
+            <span>Finding Certainty Factors</span>
           </span>
           <span className="text-[11px] font-mono text-cyan-400 hover:underline">
             {showDetails ? 'Hide Metrics ▲' : 'View Factors ▼'}
@@ -231,6 +263,12 @@ export const ConfidenceScoreGauge: React.FC<ConfidenceScoreGaugeProps> = ({ audi
                 <p className="text-[10px] text-slate-500">{f.note}</p>
               </div>
             ))}
+
+            {audit.llm_metadata?.evaluation_notes && (
+              <p className="text-[10px] text-cyan-300/80 italic pt-1 border-t border-slate-800">
+                &ldquo;{audit.llm_metadata.evaluation_notes}&rdquo;
+              </p>
+            )}
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { AuditResponse, AuditStatus } from '../types/compliance';
+import { AuditResponse, AuditStatus, AuditCategory } from '../types/compliance';
 import {
   Search,
   Filter,
@@ -59,6 +59,7 @@ import { AuditRiskFrequencyTrendChart } from './AuditRiskFrequencyTrendChart';
 import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
 import { RegionalRiskDistributionWidget } from './RegionalRiskDistributionWidget';
 import { HighRiskAuditMilestoneTimeline } from './HighRiskAuditMilestoneTimeline';
+import { AuditCategoryFilterWidget, classifyAuditCategory } from './AuditCategoryFilterWidget';
 import { BulkExportModal } from './BulkExportModal';
 import { CompareAuditsModal } from './CompareAuditsModal';
 import { useToast } from '../context/ToastContext';
@@ -94,6 +95,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [selectedCountry, setSelectedCountry] = useState<string>('ALL');
   const [selectedRiskRange, setSelectedRiskRange] = useState<string>('ALL'); // 'ALL' | 'LOW' | 'MODERATE' | 'CRITICAL'
+  const [selectedCategory, setSelectedCategory] = useState<AuditCategory>('ALL');
+  const [isGroupedByCategory, setIsGroupedByCategory] = useState<boolean>(false);
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
 
@@ -289,6 +292,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const filteredAndSortedHistory = useMemo(() => {
     return history
       .filter((item) => {
+        if (selectedCategory !== 'ALL') {
+          const cat = classifyAuditCategory(item);
+          if (cat !== selectedCategory) return false;
+        }
         if (selectedStatus !== 'ALL' && item.audit_status !== selectedStatus) {
           return false;
         }
@@ -354,7 +361,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         }
         return sortOrder === 'asc' ? comp : -comp;
       });
-  }, [history, selectedStatus, selectedCountry, selectedRiskRange, searchQuery, sortField, sortOrder]);
+  }, [history, selectedCategory, selectedStatus, selectedCountry, selectedRiskRange, searchQuery, sortField, sortOrder]);
 
   const handleSortToggle = (field: SortField) => {
     if (sortField === field) {
@@ -423,13 +430,327 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   };
 
   const hasActiveFilters =
-    searchQuery !== '' || selectedStatus !== 'ALL' || selectedCountry !== 'ALL' || selectedRiskRange !== 'ALL';
+    searchQuery !== '' ||
+    selectedCategory !== 'ALL' ||
+    selectedStatus !== 'ALL' ||
+    selectedCountry !== 'ALL' ||
+    selectedRiskRange !== 'ALL';
 
   const resetFilters = () => {
     setSearchQuery('');
+    setSelectedCategory('ALL');
     setSelectedStatus('ALL');
     setSelectedCountry('ALL');
     setSelectedRiskRange('ALL');
+  };
+
+  const groupedCategorySections = useMemo(() => {
+    return [
+      {
+        category: 'HIGH_RISK' as const,
+        label: 'High Risk Past Audits',
+        sublabel: 'Severe regulatory non-compliance, unpermitted cargo & mandatory quarantine holds',
+        badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+        icon: <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />,
+        items: filteredAndSortedHistory.filter((a) => classifyAuditCategory(a) === 'HIGH_RISK'),
+      },
+      {
+        category: 'PENDING_REVIEW' as const,
+        label: 'Pending Review Past Audits',
+        sublabel: 'Conditional compliance flags, tariff amendments & documentation gaps requiring broker review',
+        badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        icon: <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />,
+        items: filteredAndSortedHistory.filter((a) => classifyAuditCategory(a) === 'PENDING_REVIEW'),
+      },
+      {
+        category: 'CUSTOMS_APPROVED' as const,
+        label: 'Customs Approved Past Audits',
+        sublabel: 'Statutory concordance verified, zero critical discrepancies, green-channel automated entry release',
+        badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        icon: <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />,
+        items: filteredAndSortedHistory.filter((a) => classifyAuditCategory(a) === 'CUSTOMS_APPROVED'),
+      },
+    ];
+  }, [filteredAndSortedHistory]);
+
+  const renderAuditRow = (item: AuditResponse) => {
+    const isExpanded = expandedAuditId === item.audit_id;
+
+    let statusBadge = (
+      <div className="flex items-center gap-1.5 font-mono">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-sm shadow-emerald-500/50" />
+        <span className="font-bold text-emerald-400 text-xs tracking-tight">CLEARED</span>
+        <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
+      </div>
+    );
+
+    if (item.audit_status === 'REJECTED') {
+      statusBadge = (
+        <div className="flex items-center gap-1.5 font-mono">
+          <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 shadow-sm shadow-rose-500/50" />
+          <span className="font-bold text-rose-400 text-xs tracking-tight">REJECTED</span>
+          <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
+        </div>
+      );
+    } else if (item.audit_status === 'FLAGGED') {
+      statusBadge = (
+        <div className="flex items-center gap-1.5 font-mono">
+          <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-sm shadow-amber-500/50" />
+          <span className="font-bold text-amber-400 text-xs tracking-tight">FLAGGED</span>
+          <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
+        </div>
+      );
+    }
+
+    const declaredVal = Number(item.extracted_entities?.total_declared_value) || 0;
+    const currency = item.extracted_entities?.currency || 'USD';
+    const discrepancyCount = item.compliance_discrepancies?.length || 0;
+
+    return (
+      <React.Fragment key={item.audit_id}>
+        <tr
+          className={`hover:bg-slate-800/40 transition-colors group cursor-pointer ${
+            isExpanded ? 'bg-slate-800/30' : ''
+          }`}
+          onClick={() => setExpandedAuditId(isExpanded ? null : item.audit_id)}
+        >
+          {/* Compare Selection Checkbox */}
+          <td
+            className="py-3.5 px-3 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={selectedForCompare.includes(item.audit_id)}
+              onChange={() => toggleCompareSelection(item.audit_id)}
+              className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-indigo-500/50 cursor-pointer w-3.5 h-3.5"
+              title="Select to compare side-by-side"
+            />
+          </td>
+
+          {/* Status / Risk */}
+          <td className="py-3.5 px-4 whitespace-nowrap">
+            <div className="space-y-1.5">
+              {statusBadge}
+              <div className="w-24 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    item.risk_score >= 70
+                      ? 'bg-rose-500'
+                      : item.risk_score >= 30
+                      ? 'bg-amber-400'
+                      : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(5, item.risk_score))}%` }}
+                />
+              </div>
+            </div>
+          </td>
+
+          {/* Audit ID / Reference */}
+          <td className="py-3.5 px-4 whitespace-nowrap">
+            <div className="font-mono font-bold text-white flex items-center gap-1.5">
+              <span>{item.audit_id}</span>
+            </div>
+            <div className="text-[11px] text-slate-400 truncate max-w-[180px] font-mono mt-0.5">
+              {item.extracted_entities?.document_number || item.document_file_name || 'Manifest'}
+            </div>
+          </td>
+
+          {/* Route / Entities */}
+          <td className="py-3.5 px-4 min-w-[200px]">
+            <div className="text-slate-200 font-medium truncate max-w-xs">
+              {item.extracted_entities?.shipper_name || 'Shipper'}
+            </div>
+            <div className="text-[11px] text-slate-400 flex items-center gap-1 truncate max-w-xs mt-0.5">
+              <span className="text-slate-500">→</span>
+              <span className="truncate">{item.extracted_entities?.consignee_name || 'Consignee'}</span>
+            </div>
+            {(item.extracted_entities?.port_of_loading || item.extracted_entities?.port_of_discharge) && (
+              <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
+                {item.extracted_entities.port_of_loading?.split('(')[0]} → {item.extracted_entities.port_of_discharge?.split('(')[0]}
+              </div>
+            )}
+          </td>
+
+          {/* Jurisdiction */}
+          <td className="py-3.5 px-4 whitespace-nowrap">
+            <div className="font-medium text-slate-200 text-xs">
+              {item.destination_country === 'USA' ? '🇺🇸 United States' :
+               item.destination_country === 'EU' ? '🇪🇺 European Union' :
+               item.destination_country === 'Singapore' ? '🇸🇬 Singapore' :
+               item.destination_country === 'UAE' ? '🇦🇪 UAE' :
+               item.destination_country === 'UK' ? '🇬🇧 United Kingdom' :
+               item.destination_country === 'Japan' ? '🇯🇵 Japan' :
+               item.destination_country === 'Australia' ? '🇦🇺 Australia' : item.destination_country}
+            </div>
+            <div className="text-[11px] text-slate-400 truncate max-w-[170px] mt-0.5 font-mono">
+              {item.regulatory_framework?.split('&')[0]}
+            </div>
+          </td>
+
+          {/* Declared Value */}
+          <td className="py-3.5 px-4 whitespace-nowrap font-mono">
+            <div className="font-bold text-white text-xs">
+              ${declaredVal.toLocaleString()} {currency}
+            </div>
+            <div className="text-[10px] text-slate-400">
+              {item.extracted_entities?.items?.length || 1} line item{(item.extracted_entities?.items?.length || 1) > 1 ? 's' : ''}
+            </div>
+          </td>
+
+          {/* Timestamp */}
+          <td className="py-3.5 px-4 whitespace-nowrap text-[11px] text-slate-400 font-mono">
+            <div>{new Date(item.timestamp).toLocaleDateString()}</div>
+            <div className="text-[10px] text-slate-500">
+              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </td>
+
+          {/* Actions */}
+          <td className="py-3.5 px-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={() => onSelectAudit(item)}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold font-mono flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                title="Open Full Audit Dossier"
+              >
+                <span>Dossier</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExpandedAuditId(isExpanded ? null : item.audit_id)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title={isExpanded ? 'Collapse Quick Details' : 'Expand Quick Details'}
+              >
+                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDeleteAuditItem(item.audit_id)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Delete record"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        {/* Expandable Quick Details Drawer */}
+        {isExpanded && (
+          <tr className="bg-slate-950/70 border-b border-slate-800">
+            <td colSpan={8} className="p-5">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-white">
+                      Quick Audit Inspection: {item.audit_id}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      ({item.extracted_entities?.document_type || 'Customs Ingestion'})
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectAudit(item)}
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                    >
+                      <span>Open Full Interactive Dossier</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  {/* Items */}
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <div className="text-[11px] font-mono text-slate-400 font-bold uppercase flex items-center justify-between">
+                      <span>Cargo Line Items</span>
+                      <span className="text-emerald-400">{item.extracted_entities?.items?.length || 0}</span>
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {item.extracted_entities?.items?.map((it, idx) => (
+                        <div key={idx} className="p-2 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
+                          <p className="font-semibold text-white truncate">{it.item_description}</p>
+                          <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="text-amber-400">HS: {it.declared_hs_code}</span>
+                            <span className="text-slate-400">Qty: {it.quantity} {it.unit}</span>
+                          </div>
+                          {it.hazardous_class && (
+                            <span className="inline-block text-[10px] text-amber-300 font-mono">
+                              ⚠️ {it.hazardous_class}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Discrepancies */}
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                    <div className="text-[11px] font-mono text-slate-400 font-bold uppercase flex items-center justify-between">
+                      <span>Identified Discrepancies</span>
+                      <span className={discrepancyCount > 0 ? 'text-rose-400' : 'text-emerald-400'}>
+                        {discrepancyCount}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                      {discrepancyCount === 0 ? (
+                        <p className="text-slate-500 italic py-2">No regulatory discrepancies identified. Complete statutory compliance.</p>
+                      ) : (
+                        item.compliance_discrepancies.map((d, dIdx) => (
+                          <div key={dIdx} className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] leading-relaxed">
+                            • {d}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Tariff & Actions */}
+                  <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2.5">
+                    <div className="text-[11px] font-mono text-slate-400 font-bold uppercase">
+                      Tariff & Regulatory Summary
+                    </div>
+                    <div className="space-y-1.5 text-[11px]">
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Framework:</span>
+                        <span className="text-slate-200 font-mono truncate max-w-[160px]">{item.regulatory_framework}</span>
+                      </div>
+                      {item.duty_tariff_analysis && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">Est. Duty Rate:</span>
+                            <span className="text-amber-400 font-mono">{item.duty_tariff_analysis.estimated_duty_rate}</span>
+                          </div>
+                          {item.duty_tariff_analysis.estimated_duty_amount !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Est. Duty Deposit:</span>
+                              <span className="text-white font-mono font-bold">${item.duty_tariff_analysis.estimated_duty_amount.toLocaleString()}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Actions Mandated:</span>
+                        <span className="text-white font-mono font-bold">{item.recommended_actions?.length || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -918,6 +1239,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      {/* Audit Category Filter Widget: Group past audits by High Risk, Pending Review, or Customs Approved */}
+      <AuditCategoryFilterWidget
+        history={history}
+        activeCategory={selectedCategory}
+        onSelectCategory={(cat) => setSelectedCategory(cat)}
+        isGrouped={isGroupedByCategory}
+        onToggleGrouped={(grouped) => setIsGroupedByCategory(grouped)}
+      />
+
       {/* Main Table Card with Search & Filters */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-500 delay-400 fill-mode-both">
         {/* Control Toolbar */}
@@ -1272,271 +1602,32 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </thead>
 
               <tbody className="divide-y divide-slate-800/80 text-xs">
-                {filteredAndSortedHistory.map((item) => {
-                  const isExpanded = expandedAuditId === item.audit_id;
-
-                  let statusBadge = (
-                    <div className="flex items-center gap-1.5 font-mono">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-sm shadow-emerald-500/50" />
-                      <span className="font-bold text-emerald-400 text-xs tracking-tight">CLEARED</span>
-                      <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
-                    </div>
-                  );
-
-                  if (item.audit_status === 'REJECTED') {
-                    statusBadge = (
-                      <div className="flex items-center gap-1.5 font-mono">
-                        <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 shadow-sm shadow-rose-500/50" />
-                        <span className="font-bold text-rose-400 text-xs tracking-tight">REJECTED</span>
-                        <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
-                      </div>
-                    );
-                  } else if (item.audit_status === 'FLAGGED') {
-                    statusBadge = (
-                      <div className="flex items-center gap-1.5 font-mono">
-                        <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-sm shadow-amber-500/50" />
-                        <span className="font-bold text-amber-400 text-xs tracking-tight">FLAGGED</span>
-                        <span className="text-slate-500 text-[11px]">· {item.risk_score}</span>
-                      </div>
-                    );
-                  }
-
-                  const declaredVal = Number(item.extracted_entities?.total_declared_value) || 0;
-                  const currency = item.extracted_entities?.currency || 'USD';
-                  const discrepancyCount = item.compliance_discrepancies?.length || 0;
-
-                  return (
-                    <React.Fragment key={item.audit_id}>
-                      <tr
-                        className={`hover:bg-slate-800/40 transition-colors group cursor-pointer ${
-                          isExpanded ? 'bg-slate-800/30' : ''
-                        }`}
-                        onClick={() => setExpandedAuditId(isExpanded ? null : item.audit_id)}
-                      >
-                        {/* Status / Risk */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="space-y-1.5">
-                            {statusBadge}
-                            <div className="w-24 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  item.risk_score >= 70
-                                    ? 'bg-rose-500'
-                                    : item.risk_score >= 30
-                                    ? 'bg-amber-400'
-                                    : 'bg-emerald-400'
-                                }`}
-                                style={{ width: `${Math.min(100, Math.max(5, item.risk_score))}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Audit ID / Reference */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="font-mono font-bold text-white flex items-center gap-1.5">
-                            <span>{item.audit_id}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-400 truncate max-w-[180px] font-mono mt-0.5">
-                            {item.extracted_entities?.document_number || item.document_file_name || 'Manifest'}
-                          </div>
-                        </td>
-
-                        {/* Route / Entities */}
-                        <td className="py-3.5 px-4 min-w-[200px]">
-                          <div className="text-slate-200 font-medium truncate max-w-xs">
-                            {item.extracted_entities?.shipper_name || 'Shipper'}
-                          </div>
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1 truncate max-w-xs mt-0.5">
-                            <span className="text-slate-500">→</span>
-                            <span className="truncate">{item.extracted_entities?.consignee_name || 'Consignee'}</span>
-                          </div>
-                          {(item.extracted_entities?.port_of_loading || item.extracted_entities?.port_of_discharge) && (
-                            <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate">
-                              {item.extracted_entities.port_of_loading?.split('(')[0]} → {item.extracted_entities.port_of_discharge?.split('(')[0]}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Jurisdiction */}
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="font-medium text-slate-200 text-xs">
-                            {item.destination_country === 'USA' ? '🇺🇸 United States' :
-                             item.destination_country === 'EU' ? '🇪🇺 European Union' :
-                             item.destination_country === 'Singapore' ? '🇸🇬 Singapore' :
-                             item.destination_country === 'UAE' ? '🇦🇪 UAE' :
-                             item.destination_country === 'UK' ? '🇬🇧 United Kingdom' :
-                             item.destination_country === 'Japan' ? '🇯🇵 Japan' :
-                             item.destination_country === 'Australia' ? '🇦🇺 Australia' : item.destination_country}
-                          </div>
-                          <div className="text-[11px] text-slate-400 truncate max-w-[170px] mt-0.5 font-mono">
-                            {item.regulatory_framework?.split('&')[0]}
-                          </div>
-                        </td>
-
-                        {/* Declared Value */}
-                        <td className="py-3.5 px-4 whitespace-nowrap font-mono">
-                          <div className="font-bold text-white text-xs">
-                            ${declaredVal.toLocaleString()} {currency}
-                          </div>
-                          <div className="text-[10px] text-slate-400">
-                            {item.extracted_entities?.items?.length || 1} line item{(item.extracted_entities?.items?.length || 1) > 1 ? 's' : ''}
-                          </div>
-                        </td>
-
-                        {/* Timestamp */}
-                        <td className="py-3.5 px-4 whitespace-nowrap text-[11px] text-slate-400 font-mono">
-                          <div>{new Date(item.timestamp).toLocaleDateString()}</div>
-                          <div className="text-[10px] text-slate-500">
-                            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="py-3.5 px-4 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => onSelectAudit(item)}
-                              className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold font-mono flex items-center gap-1 transition-all cursor-pointer shadow-sm"
-                              title="Open Full Audit Dossier"
-                            >
-                              <span>Dossier</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setExpandedAuditId(isExpanded ? null : item.audit_id)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                              title={isExpanded ? 'Collapse Quick Details' : 'Expand Quick Details'}
-                            >
-                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => onDeleteAuditItem(item.audit_id)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                              title="Delete record"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Expandable Quick Details Drawer */}
-                      {isExpanded && (
-                        <tr className="bg-slate-950/70 border-b border-slate-800">
-                          <td colSpan={7} className="p-5">
-                            <div className="space-y-4">
-                              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-mono font-bold text-white">
-                                    Quick Audit Inspection: {item.audit_id}
-                                  </span>
-                                  <span className="text-[11px] text-slate-400 font-mono">
-                                    ({item.extracted_entities?.document_type || 'Customs Ingestion'})
-                                  </span>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => onSelectAudit(item)}
-                                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
-                                  >
-                                    <span>Open Full Interactive Dossier</span>
-                                    <ArrowRight className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                                {/* Items */}
-                                <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                                  <div className="text-[11px] font-mono text-slate-400 font-bold uppercase flex items-center justify-between">
-                                    <span>Cargo Line Items</span>
-                                    <span className="text-emerald-400">{item.extracted_entities?.items?.length || 0}</span>
-                                  </div>
-                                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                                    {item.extracted_entities?.items?.map((it, idx) => (
-                                      <div key={idx} className="p-2 rounded-lg bg-slate-950 border border-slate-800/80 space-y-1">
-                                        <p className="font-semibold text-white truncate">{it.item_description}</p>
-                                        <div className="flex items-center justify-between text-[11px] font-mono">
-                                          <span className="text-amber-400">HS: {it.declared_hs_code}</span>
-                                          <span className="text-slate-400">Qty: {it.quantity} {it.unit}</span>
-                                        </div>
-                                        {it.hazardous_class && (
-                                          <span className="inline-block text-[10px] text-amber-300 font-mono">
-                                            ⚠️ {it.hazardous_class}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-
-                                {/* Discrepancies */}
-                                <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                                  <div className="text-[11px] font-mono text-slate-400 font-bold uppercase flex items-center justify-between">
-                                    <span>Identified Discrepancies</span>
-                                    <span className={discrepancyCount > 0 ? 'text-rose-400' : 'text-emerald-400'}>
-                                      {discrepancyCount}
-                                    </span>
-                                  </div>
-                                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                                    {discrepancyCount === 0 ? (
-                                      <p className="text-slate-500 italic py-2">No regulatory discrepancies identified. Complete statutory compliance.</p>
-                                    ) : (
-                                      item.compliance_discrepancies.map((d, dIdx) => (
-                                        <div key={dIdx} className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] leading-relaxed">
-                                          • {d}
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Tariff & Actions */}
-                                <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2.5">
-                                  <div className="text-[11px] font-mono text-slate-400 font-bold uppercase">
-                                    Tariff & Regulatory Summary
-                                  </div>
-                                  <div className="space-y-1.5 text-[11px]">
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-400">Framework:</span>
-                                      <span className="text-slate-200 font-mono truncate max-w-[160px]">{item.regulatory_framework}</span>
-                                    </div>
-                                    {item.duty_tariff_analysis && (
-                                      <>
-                                        <div className="flex justify-between">
-                                          <span className="text-slate-400">Est. Duty Rate:</span>
-                                          <span className="text-amber-400 font-mono">{item.duty_tariff_analysis.estimated_duty_rate}</span>
-                                        </div>
-                                        {item.duty_tariff_analysis.estimated_duty_amount !== undefined && (
-                                          <div className="flex justify-between">
-                                            <span className="text-slate-400">Est. Duty Deposit:</span>
-                                            <span className="text-white font-mono font-bold">${item.duty_tariff_analysis.estimated_duty_amount.toLocaleString()}</span>
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                    <div className="flex justify-between">
-                                      <span className="text-slate-400">Actions Mandated:</span>
-                                      <span className="text-white font-mono font-bold">{item.recommended_actions?.length || 0}</span>
-                                    </div>
-                                  </div>
-                                </div>
+                {isGroupedByCategory ? (
+                  groupedCategorySections.map((group) => {
+                    if (group.items.length === 0) return null;
+                    return (
+                      <React.Fragment key={group.category}>
+                        <tr className="bg-slate-950 border-y border-slate-800">
+                          <td colSpan={8} className="py-2.5 px-4 bg-slate-950/95">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {group.icon}
+                                <span className="font-bold text-white font-mono text-xs">{group.label}</span>
+                                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${group.badgeBg}`}>
+                                  {group.items.length} {group.items.length === 1 ? 'record' : 'records'}
+                                </span>
+                                <span className="text-[11px] text-slate-400 hidden md:inline">• {group.sublabel}</span>
                               </div>
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                        {group.items.map((item) => renderAuditRow(item))}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  filteredAndSortedHistory.map((item) => renderAuditRow(item))
+                )}
               </tbody>
             </table>
           )}

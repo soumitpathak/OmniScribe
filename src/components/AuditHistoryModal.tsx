@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { AuditResponse } from '../types/compliance';
+import React, { useState, useMemo } from 'react';
+import { AuditResponse, AuditCategory } from '../types/compliance';
+import { AuditCategoryFilterWidget, classifyAuditCategory } from './AuditCategoryFilterWidget';
 import {
   X,
   History,
@@ -38,6 +39,46 @@ export const AuditHistoryModal: React.FC<AuditHistoryModalProps> = ({
   const [compareMode, setCompareMode] = useState<boolean>(false);
   const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
   const [isViewingComparison, setIsViewingComparison] = useState<boolean>(false);
+  const [selectedCategory, setSelectedCategory] = useState<AuditCategory>('ALL');
+  const [isGroupedByCategory, setIsGroupedByCategory] = useState<boolean>(false);
+
+  const filteredHistory = useMemo(() => {
+    return history.filter((item) => {
+      if (selectedCategory !== 'ALL') {
+        return classifyAuditCategory(item) === selectedCategory;
+      }
+      return true;
+    });
+  }, [history, selectedCategory]);
+
+  const modalGroupedSections = useMemo(() => {
+    return [
+      {
+        category: 'HIGH_RISK' as const,
+        label: 'High Risk Audits',
+        sublabel: 'Quarantined / Critical Non-Compliance',
+        badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/40',
+        icon: <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />,
+        items: filteredHistory.filter((a) => classifyAuditCategory(a) === 'HIGH_RISK'),
+      },
+      {
+        category: 'PENDING_REVIEW' as const,
+        label: 'Pending Review Audits',
+        sublabel: 'Conditional Holds / Tariff Discrepancies',
+        badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        icon: <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />,
+        items: filteredHistory.filter((a) => classifyAuditCategory(a) === 'PENDING_REVIEW'),
+      },
+      {
+        category: 'CUSTOMS_APPROVED' as const,
+        label: 'Customs Approved Audits',
+        sublabel: 'Green-Channel Entry Clearance',
+        badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        icon: <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />,
+        items: filteredHistory.filter((a) => classifyAuditCategory(a) === 'CUSTOMS_APPROVED'),
+      },
+    ];
+  }, [filteredHistory]);
 
   if (!isOpen) return null;
 
@@ -415,8 +456,17 @@ export const AuditHistoryModal: React.FC<AuditHistoryModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Standard History List with Selection Mode */
-          <div className="p-5 overflow-y-auto space-y-3 flex-1">
+          /* Standard History List with Selection Mode & Category Filter */
+          <div className="p-5 overflow-y-auto space-y-4 flex-1">
+            {/* Audit Category Filter Widget */}
+            <AuditCategoryFilterWidget
+              history={history}
+              activeCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              isGrouped={isGroupedByCategory}
+              onToggleGrouped={setIsGroupedByCategory}
+            />
+
             {compareMode && (
               <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-between text-xs text-indigo-300">
                 <div className="flex items-center gap-2">
@@ -431,12 +481,105 @@ export const AuditHistoryModal: React.FC<AuditHistoryModalProps> = ({
               </div>
             )}
 
-            {history.length === 0 ? (
+            {filteredHistory.length === 0 ? (
               <div className="py-12 text-center text-slate-500 text-xs">
-                No audit records saved yet. Run your first autonomous compliance audit above!
+                No audit records found in this category. Select &ldquo;All Past Audits&rdquo; to view full archive.
               </div>
+            ) : isGroupedByCategory ? (
+              modalGroupedSections.map((group) => {
+                if (group.items.length === 0) return null;
+                return (
+                  <div key={group.category} className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between px-2 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800">
+                      <div className="flex items-center gap-2">
+                        {group.icon}
+                        <span className="font-bold text-white text-xs font-mono">{group.label}</span>
+                        <span className={`text-[10px] font-mono px-2 py-0.2 rounded-full border ${group.badgeBg}`}>
+                          {group.items.length} records
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">{group.sublabel}</span>
+                    </div>
+
+                    <div className="space-y-2 pl-2 border-l border-slate-800/80">
+                      {group.items.map((item, idx) => {
+                        let badgeBg = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+                        let icon = <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />;
+
+                        if (item.audit_status === 'REJECTED') {
+                          badgeBg = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+                          icon = <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />;
+                        } else if (item.audit_status === 'FLAGGED') {
+                          badgeBg = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+                          icon = <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />;
+                        }
+
+                        const isSelected = selectedForCompare.includes(item.audit_id);
+
+                        return (
+                          <div
+                            key={item.audit_id || idx}
+                            onClick={() => {
+                              if (compareMode) {
+                                toggleSelectForCompare(item.audit_id);
+                              } else {
+                                onSelectAudit(item);
+                                onClose();
+                              }
+                            }}
+                            className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between group ${
+                              isSelected
+                                ? 'bg-indigo-950/30 border-indigo-500 shadow-md shadow-indigo-500/10'
+                                : 'bg-slate-950/70 border-slate-800 hover:border-emerald-500/50 hover:bg-slate-850'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              {compareMode ? (
+                                <div className="text-indigo-400">
+                                  {isSelected ? (
+                                    <CheckSquare className="w-5 h-5 text-indigo-400 shrink-0" />
+                                  ) : (
+                                    <Square className="w-5 h-5 text-slate-600 group-hover:text-slate-400 shrink-0" />
+                                  )}
+                                </div>
+                              ) : (
+                                icon
+                              )}
+
+                              <div className="truncate">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-white font-mono">{item.audit_id}</span>
+                                  <span
+                                    className={`text-[10px] font-bold px-1.5 py-0.2 rounded border uppercase font-mono ${badgeBg}`}
+                                  >
+                                    {item.audit_status} ({item.risk_score}/100)
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    → {item.destination_country}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-300 mt-1 truncate">
+                                  {item.extracted_entities?.shipper_name || item.document_file_name || 'Shipper Unspecified'} →{' '}
+                                  {item.extracted_entities?.consignee_name || item.destination_country || 'Consignee Unspecified'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 text-slate-500 group-hover:text-emerald-400">
+                              <span className="text-xs font-medium hidden sm:inline">
+                                {compareMode ? (isSelected ? 'Selected' : 'Select') : 'View Dossier'}
+                              </span>
+                              <ArrowUpRight className="w-4 h-4" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
             ) : (
-              history.map((item, idx) => {
+              filteredHistory.map((item, idx) => {
                 let badgeBg = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
                 let icon = <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />;
 
