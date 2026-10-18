@@ -32,6 +32,8 @@ import {
   Activity,
   BarChart3,
   Sliders,
+  Scale,
+  CheckSquare,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -54,6 +56,7 @@ import {
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
 import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
 import { BulkExportModal } from './BulkExportModal';
+import { CompareAuditsModal } from './CompareAuditsModal';
 import { useToast } from '../context/ToastContext';
 
 interface DashboardPageProps {
@@ -87,6 +90,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [selectedRiskRange, setSelectedRiskRange] = useState<string>('ALL'); // 'ALL' | 'LOW' | 'MODERATE' | 'CRITICAL'
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
+
+  // Compare Audits State (Requirement: Compare past audits from history list)
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
+
+  const toggleCompareSelection = (auditId: string) => {
+    setSelectedForCompare((prev) => {
+      if (prev.includes(auditId)) {
+        return prev.filter((id) => id !== auditId);
+      }
+      if (prev.length >= 2) {
+        return [prev[1], auditId];
+      }
+      return [...prev, auditId];
+    });
+  };
 
   // Sorting State
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -893,6 +912,36 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             {/* Quick action tools */}
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
+              {/* Compare Audits Button */}
+              <button
+                onClick={() => {
+                  if (selectedForCompare.length < 2 && history.length >= 2) {
+                    if (selectedForCompare.length === 0) {
+                      setSelectedForCompare([history[0].audit_id, history[1].audit_id]);
+                    } else if (selectedForCompare.length === 1) {
+                      const other = history.find((h) => h.audit_id !== selectedForCompare[0]);
+                      if (other) setSelectedForCompare([selectedForCompare[0], other.audit_id]);
+                    }
+                  }
+                  setIsCompareOpen(true);
+                }}
+                type="button"
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  selectedForCompare.length > 0
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-indigo-500/50'
+                }`}
+                title="Select and compare compliance discrepancies and risk scores between past audits"
+              >
+                <Scale className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Compare Audits</span>
+                {selectedForCompare.length > 0 && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-400/40">
+                    {selectedForCompare.length}/2
+                  </span>
+                )}
+              </button>
+
               {/* Bulk Export CSV Button */}
               <button
                 onClick={() => setIsBulkExportOpen(true)}
@@ -1005,6 +1054,70 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
 
+        {/* Floating/Inline Selection Bar for Audits Comparison */}
+        {selectedForCompare.length > 0 && (
+          <div className="p-3 mx-4 sm:mx-6 my-2 rounded-2xl bg-indigo-950/70 border border-indigo-500/40 flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-1 text-xs font-mono">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Scale className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span className="text-white font-bold">
+                {selectedForCompare.length === 1
+                  ? '1 Audit Selected for Comparison:'
+                  : '2 Audits Selected for Side-by-Side Comparison:'}
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {selectedForCompare.map((id) => {
+                  const item = history.find((h) => h.audit_id === id);
+                  return (
+                    <span
+                      key={id}
+                      className="px-2 py-0.5 rounded-lg bg-slate-900 border border-indigo-400/30 text-indigo-300 font-bold flex items-center gap-1"
+                    >
+                      <span>{id}</span>
+                      {item && (
+                        <span className="text-slate-400 text-[10px]">
+                          ({item.risk_score} pts · {item.destination_country})
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => toggleCompareSelection(id)}
+                        className="text-slate-400 hover:text-white ml-0.5 cursor-pointer"
+                        title="Deselect"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+              {selectedForCompare.length === 1 && (
+                <span className="text-slate-400 hidden lg:inline">
+                  (Check 1 more audit from the table below to compare)
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCompareOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all shadow-md shadow-indigo-600/30 cursor-pointer"
+              >
+                <Scale className="w-3.5 h-3.5" />
+                <span>Launch Side-by-Side Comparison</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedForCompare([])}
+                className="px-2.5 py-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Audit Records Table */}
         <div className="overflow-x-auto">
           {filteredAndSortedHistory.length === 0 ? (
@@ -1039,6 +1152,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-mono text-slate-400 uppercase tracking-wider select-none">
+                  <th className="py-3.5 px-3 w-10 text-center" title="Select audits to compare side-by-side">
+                    <span className="sr-only">Compare</span>
+                    <Scale className="w-3.5 h-3.5 mx-auto text-slate-500" />
+                  </th>
                   <th className="py-3.5 px-4">
                     <button
                       type="button"
