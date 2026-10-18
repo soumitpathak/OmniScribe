@@ -1,4 +1,4 @@
-import { BookOpen, History, Hash, LogOut, LayoutDashboard, ShieldCheck, Settings, Layers } from 'lucide-react';
+import { BookOpen, History, Hash, LogOut, LayoutDashboard, ShieldCheck } from 'lucide-react';
 import { OmniScribeLogo } from './OmniScribeLogo';
 import { useAuth } from '../context/AuthContext';
 
@@ -20,9 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onOpenRules,
   onOpenHistory,
-  onOpenArchitecture,
   onOpenHSLookup,
-  onOpenSettings,
   historyCount,
 }) => {
   const { user, logout } = useAuth();
@@ -117,30 +115,6 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             )}
           </button>
-
-          {/* Architecture Explorer Button */}
-          {onOpenArchitecture && (
-            <button
-              onClick={onOpenArchitecture}
-              type="button"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors shadow-sm cursor-pointer"
-              title="System Architecture & Multimodal Pipeline"
-            >
-              <Layers className="w-4 h-4 text-cyan-400" />
-            </button>
-          )}
-
-          {/* Settings Button */}
-          {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              type="button"
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition-colors shadow-sm cursor-pointer"
-              title="Compliance Settings & Risk Cutoff Configuration"
-            >
-              <Settings className="w-4 h-4 text-slate-300" />
-            </button>
-          )}
 
           {/* User Account & Sign Out */}
           {user && (
