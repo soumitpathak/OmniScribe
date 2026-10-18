@@ -1,5 +1,45 @@
 import { jsPDF } from 'jspdf';
-import { AuditResponse } from '../types/compliance';
+import { AuditResponse, LineItem } from '../types/compliance';
+
+// Calculate risk intensity for PDF export
+function getPdfItemRisk(item: LineItem, overallScore: number, auditStatus: string): {
+  score: number;
+  tier: string;
+  isHigh: boolean;
+} {
+  let score = 12;
+  const desc = (item.item_description || '').toLowerCase();
+  const haz = (item.hazardous_class || '').toLowerCase();
+  const flags = item.compliance_flags || [];
+
+  if (haz.includes('class 9') || haz.includes('un3480') || haz.includes('un3481') || haz.includes('lithium') || desc.includes('lithium') || desc.includes('battery')) {
+    score += 48;
+  }
+  if (haz.includes('5a002') || haz.includes('dual-use') || haz.includes('munitions') || desc.includes('ka-band') || desc.includes('transceiver') || desc.includes('cryptographic')) {
+    score += 65;
+  }
+  if (haz.includes('temperature') || haz.includes('pharma') || haz.includes('biological') || desc.includes('insulin')) {
+    score += 35;
+  }
+  for (const f of flags) {
+    const fl = f.toLowerCase();
+    if (fl.includes('unlicensed') || fl.includes('quarantine') || fl.includes('high-risk')) score += 25;
+    else if (fl.includes('missing') || fl.includes('absent') || fl.includes('section 301')) score += 20;
+    else score += 15;
+  }
+  if (item.verified_hs_code && item.declared_hs_code) {
+    const d = item.declared_hs_code.replace(/[^0-9]/g, '').slice(0, 4);
+    const v = item.verified_hs_code.replace(/[^0-9]/g, '').slice(0, 4);
+    if (d !== v) score += 24;
+  }
+  if (auditStatus === 'REJECTED') score = Math.max(score, 75);
+  else if (auditStatus === 'APPROVED' && score <= 25) score = Math.min(score, 18);
+  else if (auditStatus === 'FLAGGED' && score <= 30) score = Math.max(score, 38);
+
+  score = Math.min(99, Math.max(5, score));
+  const tier = score >= 85 ? 'CRITICAL' : score >= 70 ? 'HIGH' : score >= 50 ? 'ELEVATED' : score >= 26 ? 'MODERATE' : 'LOW';
+  return { score, tier, isHigh: score >= 70 };
+}
 
 export function generateAuditPDF(audit: AuditResponse): void {
   const doc = new jsPDF({
@@ -132,7 +172,47 @@ export function generateAuditPDF(audit: AuditResponse): void {
 
   y += 26;
 
-  // --- SECTION: SHIPMENT & ROUTING DOSSIER ---
+  // --- EXECUTIVE SUMMARY OF COMPLIANCE FINDINGS ---
+  const items = audit.extracted_entities?.items || [];
+  const evaluatedItems = items.map((it) => getPdfItemRisk(it, audit.risk_score, audit.audit_status));
+  const highRiskItemCount = evaluatedItems.filter((e) => e.isHigh).length;
+
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.setDrawColor(203, 213, 225); // slate-300
+  doc.setLineWidth(0.5);
+  doc.rect(margin, y, contentWidth, 22, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text('EXECUTIVE SUMMARY OF COMPLIANCE FINDINGS', margin + 4, y + 5.5);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.2);
+  doc.setTextColor(51, 65, 85);
+
+  // Key KPI bullets in 2 columns
+  const col1Text = [
+    `• Target Jurisdiction: ${audit.destination_country} (${audit.regulatory_framework.split('/')[0].trim()})`,
+    `• Discrepancies Detected: ${audit.compliance_discrepancies.length} variance(s) identified`,
+    `• Mandatory Remediation Actions: ${audit.recommended_actions.length} action item(s) required`,
+  ];
+  const col2Text = [
+    `• High-Risk Cargo Flag: ${highRiskItemCount > 0 ? `${highRiskItemCount} high-risk line item(s) highlighted` : 'None (Compliant)'}`,
+    `• Estimated Duty Assessment: ${audit.duty_tariff_analysis?.estimated_duty_rate || 'Standard Tariff'}`,
+    `• Declared Cargo Value: ${audit.extracted_entities?.currency || 'USD'} $${Number(audit.extracted_entities?.total_declared_value || 0).toLocaleString()}`,
+  ];
+
+  col1Text.forEach((line, i) => {
+    doc.text(line, margin + 4, y + 10 + i * 4);
+  });
+  col2Text.forEach((line, i) => {
+    doc.text(line, margin + contentWidth / 2 + 2, y + 10 + i * 4);
+  });
+
+  y += 26;
+
+  // --- SECTION 1: SHIPMENT & ROUTING DOSSIER ---
   const entities = audit.extracted_entities || {
     document_type: 'Logistics Manifest',
     document_number: 'N/A',
@@ -204,25 +284,25 @@ export function generateAuditPDF(audit: AuditResponse): void {
 
   y += dossierBoxHeight + 3;
 
-  // Logistics quick metadata line
+  // Logistics metadata line
   doc.setFillColor(248, 250, 252);
   doc.rect(margin, y, contentWidth, 8, 'F');
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(51, 65, 85);
-  const logisticsSummary = `Transport: ${entities.mode_of_transport || 'Ocean'} | POL: ${entities.port_of_loading || 'N/A'} | POD: ${entities.port_of_discharge || 'N/A'} | Incoterms: ${entities.incoterms || 'FOB'} | Declared Value: ${entities.currency || 'USD'} $${Number(entities.total_declared_value || 0).toLocaleString()}`;
+  const logisticsSummary = `Transport: ${entities.mode_of_transport || 'Ocean'} | POL: ${entities.port_of_loading || 'N/A'} | POD: ${entities.port_of_discharge || 'N/A'} | Incoterms: ${entities.incoterms || 'FOB'} | Declared: ${entities.currency || 'USD'} $${Number(entities.total_declared_value || 0).toLocaleString()}`;
   doc.text(logisticsSummary, margin + 3, y + 5);
 
   y += 12;
 
-  // --- SECTION: LINE ITEMS TABLE ---
-  checkPageBreak(35);
+  // --- SECTION 2: LINE ITEMS & RISK-FACTOR INTENSITY TABLE ---
+  checkPageBreak(38);
   doc.setFillColor(241, 245, 249);
   doc.rect(margin, y, contentWidth, 6, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text(`2. CLASSIFIED LINE ITEMS (${entities.items?.length || 0})`, margin + 3, y + 4.5);
+  doc.text(`2. CLASSIFIED LINE ITEMS & RISK-FACTOR INTENSITY (${entities.items?.length || 0})`, margin + 3, y + 4.5);
   y += 8;
 
   // Table Header
@@ -232,48 +312,68 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.setFontSize(7);
   doc.setTextColor(51, 65, 85);
   doc.text('ITEM DESCRIPTION', margin + 2, y + 4);
-  doc.text('DECLARED HS', margin + 80, y + 4);
-  doc.text('VERIFIED HS', margin + 110, y + 4);
-  doc.text('QTY / UNIT', margin + 140, y + 4);
+  doc.text('RISK INTENSITY', margin + 74, y + 4);
+  doc.text('DECLARED / VERIFIED HS', margin + 110, y + 4);
+  doc.text('QTY / UNIT', margin + 146, y + 4);
   doc.text('CUSTOMS VALUE', pageWidth - margin - 2, y + 4, { align: 'right' });
   y += 7;
 
   // Table Rows
   if (entities.items && entities.items.length > 0) {
     entities.items.forEach((item, idx) => {
-      checkPageBreak(12);
+      checkPageBreak(14);
+      const evalItem = getPdfItemRisk(item, audit.risk_score, audit.audit_status);
+
       doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
-      doc.rect(margin, y - 1, contentWidth, 9, 'F');
+      doc.rect(margin, y - 1, contentWidth, 11, 'F');
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(15, 23, 42);
 
-      const descText = item.item_description.length > 45 ? item.item_description.slice(0, 42) + '...' : item.item_description;
+      const descText = item.item_description.length > 42 ? item.item_description.slice(0, 39) + '...' : item.item_description;
       doc.text(descText, margin + 2, y + 3);
 
-      doc.setFont('courier', 'bold');
-      doc.setTextColor(217, 119, 6); // amber-600
-      doc.text(item.declared_hs_code || 'N/A', margin + 80, y + 3);
+      // Risk Intensity Pill
+      if (evalItem.score >= 85) {
+        doc.setTextColor(225, 29, 72); // rose-600
+        doc.setFont('helvetica', 'bold');
+        doc.text(`CRITICAL (${evalItem.score}%)`, margin + 74, y + 3);
+      } else if (evalItem.score >= 70) {
+        doc.setTextColor(234, 88, 12); // orange-600
+        doc.setFont('helvetica', 'bold');
+        doc.text(`HIGH (${evalItem.score}%)`, margin + 74, y + 3);
+      } else if (evalItem.score >= 50) {
+        doc.setTextColor(217, 119, 6); // amber-600
+        doc.setFont('helvetica', 'normal');
+        doc.text(`ELEVATED (${evalItem.score}%)`, margin + 74, y + 3);
+      } else {
+        doc.setTextColor(5, 150, 105); // emerald-600
+        doc.setFont('helvetica', 'normal');
+        doc.text(`LOW (${evalItem.score}%)`, margin + 74, y + 3);
+      }
 
-      doc.setTextColor(5, 150, 105); // emerald-600
-      doc.text(item.verified_hs_code || item.declared_hs_code || 'Matched', margin + 110, y + 3);
+      // HS Codes
+      doc.setFont('courier', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text(`${item.declared_hs_code} → ${item.verified_hs_code || item.declared_hs_code}`, margin + 110, y + 3);
 
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(71, 85, 105);
-      doc.text(`${item.quantity} ${item.unit || 'PCS'}`, margin + 140, y + 3);
+      doc.text(`${item.quantity} ${item.unit || 'PCS'}`, margin + 146, y + 3);
 
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
       doc.text(`$${Number(item.total_value || 0).toLocaleString()}`, pageWidth - margin - 2, y + 3, { align: 'right' });
 
-      // If hazardous flag
-      if (item.hazardous_class) {
+      // Secondary details: Hazardous class or compliance warning
+      if (item.hazardous_class || evalItem.isHigh) {
         doc.setFontSize(6);
         doc.setTextColor(225, 29, 72);
-        doc.text(`⚠️ ${item.hazardous_class}`, margin + 2, y + 7);
+        const warnText = item.hazardous_class ? `⚠️ ${item.hazardous_class}` : '⚠️ High-Risk Compliance Classification';
+        doc.text(warnText, margin + 2, y + 7.5);
       }
 
-      y += 10;
+      y += 12;
     });
   } else {
     doc.setFont('helvetica', 'italic');
@@ -285,7 +385,7 @@ export function generateAuditPDF(audit: AuditResponse): void {
 
   y += 4;
 
-  // --- SECTION: COMPLIANCE DISCREPANCIES ---
+  // --- SECTION 3: COMPLIANCE DISCREPANCIES ---
   checkPageBreak(30);
   doc.setFillColor(241, 245, 249);
   doc.rect(margin, y, contentWidth, 6, 'F');
@@ -323,7 +423,7 @@ export function generateAuditPDF(audit: AuditResponse): void {
 
   y += 4;
 
-  // --- SECTION: RECOMMENDED ACTIONS ---
+  // --- SECTION 4: RECOMMENDED ACTIONS ---
   checkPageBreak(30);
   doc.setFillColor(241, 245, 249);
   doc.rect(margin, y, contentWidth, 6, 'F');
@@ -355,7 +455,7 @@ export function generateAuditPDF(audit: AuditResponse): void {
     });
   }
 
-  // --- SECTION: TARIFF & PGA SUMMARY ---
+  // --- SECTION 5: TARIFF & PGA SUMMARY ---
   checkPageBreak(22);
   doc.setFillColor(248, 250, 252);
   doc.rect(margin, y, contentWidth, 14, 'F');
@@ -384,10 +484,10 @@ export function generateAuditPDF(audit: AuditResponse): void {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(148, 163, 184);
-    doc.text('OmniScribe Autonomous Logistics Regulatory Intelligence • Certified Customs Verification Slip', margin, pageHeight - 6);
+    doc.text('OmniScribe Autonomous Logistics Regulatory Intelligence • Certified Compliance Findings Report', margin, pageHeight - 6);
     doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 6, { align: 'right' });
   }
 
   // Trigger download
-  doc.save(`OmniScribe_Audit_Report_${audit.audit_id}.pdf`);
+  doc.save(`OmniScribe_Compliance_Report_${audit.audit_id}.pdf`);
 }

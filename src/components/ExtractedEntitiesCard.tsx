@@ -1,12 +1,19 @@
 import React from 'react';
 import { ExtractedEntities } from '../types/compliance';
-import { Building2, UserCheck, Ship, DollarSign, Package, MapPin, Hash, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { evaluateItemRisk } from './ItemRiskFactorScale';
+import { Building2, UserCheck, Ship, DollarSign, Package, MapPin, Hash, CheckCircle2, AlertTriangle, Flame, AlertOctagon } from 'lucide-react';
 
 interface ExtractedEntitiesCardProps {
   entities?: ExtractedEntities;
+  auditStatus?: string;
+  auditRiskScore?: number;
 }
 
-export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ entities: rawEntities }) => {
+export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({
+  entities: rawEntities,
+  auditStatus = 'FLAGGED',
+  auditRiskScore = 50,
+}) => {
   const entities = rawEntities || {
     document_type: 'Logistics Manifest',
     document_number: 'N/A',
@@ -146,6 +153,7 @@ export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ en
               <thead className="bg-slate-950 text-slate-400 font-semibold uppercase text-[10px] border-b border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3">Description</th>
+                  <th className="py-2.5 px-3">Risk Intensity</th>
                   <th className="py-2.5 px-3">Declared HS Code</th>
                   <th className="py-2.5 px-3">Verified HS Code</th>
                   <th className="py-2.5 px-3">Quantity</th>
@@ -156,16 +164,46 @@ export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ en
               <tbody className="divide-y divide-slate-800/60 bg-slate-900/60">
                 {entities.items && entities.items.length > 0 ? (
                   entities.items.map((item, idx) => {
-                    const hsMatch = item.verified_hs_code && item.declared_hs_code.startsWith(item.verified_hs_code.slice(0, 4));
+                    const evalRisk = evaluateItemRisk(item, auditRiskScore, auditStatus);
                     return (
-                      <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                      <tr
+                        key={idx}
+                        className={`transition-colors ${
+                          evalRisk.isHighRisk
+                            ? 'bg-rose-950/20 hover:bg-rose-950/30 ring-1 ring-rose-500/30'
+                            : 'hover:bg-slate-800/40'
+                        }`}
+                      >
                         <td className="py-2.5 px-3 font-medium text-white max-w-xs">
-                          <p className="line-clamp-2">{item.item_description}</p>
-                          {item.hazardous_class && (
-                            <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                              ⚠️ {item.hazardous_class}
-                            </span>
-                          )}
+                          <div className="flex items-start gap-1.5">
+                            {evalRisk.isHighRisk && (
+                              <AlertOctagon className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                            )}
+                            <div>
+                              <p className="line-clamp-2">{item.item_description}</p>
+                              {item.hazardous_class && (
+                                <span className="inline-block mt-1 text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                  ⚠️ {item.hazardous_class}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 w-36">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[10px] font-mono">
+                              <span className={`font-bold ${evalRisk.colorClass}`}>
+                                {evalRisk.tier}
+                              </span>
+                              <span className="text-slate-300 font-bold">{evalRisk.score}%</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${evalRisk.barColor}`}
+                                style={{ width: `${evalRisk.score}%` }}
+                              />
+                            </div>
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 font-mono font-bold text-amber-300">
                           {item.declared_hs_code}
@@ -192,7 +230,11 @@ export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ en
                               {item.compliance_flags.map((flag, fIdx) => (
                                 <span
                                   key={fIdx}
-                                  className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono"
+                                  className={`text-[9px] px-1.5 py-0.5 rounded border font-mono ${
+                                    evalRisk.isHighRisk
+                                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                      : 'bg-slate-800 text-slate-300 border-slate-700'
+                                  }`}
                                 >
                                   {flag}
                                 </span>
@@ -207,7 +249,7 @@ export const ExtractedEntitiesCard: React.FC<ExtractedEntitiesCardProps> = ({ en
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="py-4 text-center text-slate-500 text-xs">
+                    <td colSpan={7} className="py-4 text-center text-slate-500 text-xs">
                       No line items extracted from this manifest.
                     </td>
                   </tr>

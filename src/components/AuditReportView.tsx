@@ -7,6 +7,7 @@ import { DiscrepanciesCard } from './DiscrepanciesCard';
 import { ActionItemsCard } from './ActionItemsCard';
 import { DutyTariffCard } from './DutyTariffCard';
 import { AgentThoughtTrace } from './AgentThoughtTrace';
+import { ItemRiskFactorScale } from './ItemRiskFactorScale';
 import { generateAuditPDF } from '../utils/pdfGenerator';
 import { useToast } from '../context/ToastContext';
 import {
@@ -26,6 +27,7 @@ import {
   Calendar,
   Layers,
   Activity,
+  Flame,
 } from 'lucide-react';
 
 interface AuditReportViewProps {
@@ -44,7 +46,7 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'risk_factors' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
 
   // Status badge styling
   let statusBadgeBg = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
@@ -212,16 +214,16 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
           {/* Action Buttons */}
           <div className="flex flex-wrap lg:flex-col gap-2 shrink-0">
-            {/* Formatted PDF Button via jspdf (Requirement 1 & 7) */}
+            {/* Formatted Download PDF Report Button via jspdf */}
             <button
               onClick={handleDownloadPDF}
               type="button"
               disabled={isGeneratingPdf}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer transform hover:-translate-y-0.5"
-              title="Generate a formatted, printable PDF report with logo, risk metrics, and compliance verdict"
+              title="Download official PDF compliance report summarizing all audit findings, risk factors, and remediation requirements"
             >
               <FileDown className="w-4 h-4 text-emerald-100" />
-              <span>{isGeneratingPdf ? 'Compiling PDF...' : 'Generate PDF Report'}</span>
+              <span>{isGeneratingPdf ? 'Compiling PDF Report...' : 'Download PDF Report'}</span>
             </button>
 
             <button
@@ -295,7 +297,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
       <div className="flex border-b border-slate-800 text-xs gap-2 overflow-x-auto pb-1">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'overview'
               ? 'bg-slate-800 text-white border border-slate-700'
               : 'text-slate-400 hover:text-slate-200'
@@ -305,8 +307,19 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           Full Audit Dossier
         </button>
         <button
+          onClick={() => setActiveTab('risk_factors')}
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            activeTab === 'risk_factors'
+              ? 'bg-slate-800 text-white border border-slate-700'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Flame className="w-3.5 h-3.5 text-rose-400" />
+          Risk-Factor Intensity ({audit.extracted_entities?.items?.length || 0} Items)
+        </button>
+        <button
           onClick={() => setActiveTab('trend')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'trend'
               ? 'bg-slate-800 text-white border border-slate-700'
               : 'text-slate-400 hover:text-slate-200'
@@ -317,7 +330,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         </button>
         <button
           onClick={() => setActiveTab('entities')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'entities'
               ? 'bg-slate-800 text-white border border-slate-700'
               : 'text-slate-400 hover:text-slate-200'
@@ -328,7 +341,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         </button>
         <button
           onClick={() => setActiveTab('discrepancies')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'discrepancies'
               ? 'bg-slate-800 text-white border border-slate-700'
               : 'text-slate-400 hover:text-slate-200'
@@ -339,7 +352,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         </button>
         <button
           onClick={() => setActiveTab('actions')}
-          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 ${
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'actions'
               ? 'bg-slate-800 text-white border border-slate-700'
               : 'text-slate-400 hover:text-slate-200'
@@ -353,7 +366,20 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
       {/* Tab Contents */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          <ExtractedEntitiesCard entities={audit.extracted_entities} />
+          {/* Risk-Factor Visualization with Color-Coded Intensity Scale */}
+          <ItemRiskFactorScale
+            items={audit.extracted_entities?.items || []}
+            auditStatus={audit.audit_status}
+            auditRiskScore={audit.risk_score}
+            destinationCountry={audit.destination_country}
+          />
+
+          <ExtractedEntitiesCard
+            entities={audit.extracted_entities}
+            auditStatus={audit.audit_status}
+            auditRiskScore={audit.risk_score}
+          />
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <DiscrepanciesCard
               discrepancies={audit.compliance_discrepancies}
@@ -366,9 +392,49 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               discrepancies={audit.discrepancy_details}
             />
           </div>
+
+          {/* Compliance Findings Summary & Quick Action Card */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+                  Comprehensive Findings Dossier
+                </span>
+                <span className="text-xs text-slate-400 font-mono">
+                  {audit.compliance_discrepancies.length} Finding{audit.compliance_discrepancies.length === 1 ? '' : 's'} • {audit.recommended_actions.length} Action{audit.recommended_actions.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300">
+                Official regulatory audit documentation verified against statutory tariff indices for {audit.destination_country}.
+              </p>
+            </div>
+
+            <button
+              onClick={handleDownloadPDF}
+              type="button"
+              disabled={isGeneratingPdf}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-bold text-white shadow-lg shadow-emerald-500/20 transition-all cursor-pointer self-start sm:self-auto shrink-0"
+              title="Download PDF report summary with compliance findings"
+            >
+              <FileDown className="w-4 h-4 text-emerald-100" />
+              <span>{isGeneratingPdf ? 'Compiling PDF Report...' : 'Download PDF Report'}</span>
+            </button>
+          </div>
+
           {audit.agent_reasoning_trace && (
             <AgentThoughtTrace traces={audit.agent_reasoning_trace} />
           )}
+        </div>
+      )}
+
+      {activeTab === 'risk_factors' && (
+        <div className="space-y-6">
+          <ItemRiskFactorScale
+            items={audit.extracted_entities?.items || []}
+            auditStatus={audit.audit_status}
+            auditRiskScore={audit.risk_score}
+            destinationCountry={audit.destination_country}
+          />
         </div>
       )}
 
@@ -383,7 +449,11 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
       )}
 
       {activeTab === 'entities' && (
-        <ExtractedEntitiesCard entities={audit.extracted_entities} />
+        <ExtractedEntitiesCard
+          entities={audit.extracted_entities}
+          auditStatus={audit.audit_status}
+          auditRiskScore={audit.risk_score}
+        />
       )}
 
       {activeTab === 'discrepancies' && (
