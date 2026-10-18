@@ -54,6 +54,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
+import { AuditRiskFrequencyTrendChart } from './AuditRiskFrequencyTrendChart';
 import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
 import { BulkExportModal } from './BulkExportModal';
 import { CompareAuditsModal } from './CompareAuditsModal';
@@ -558,6 +559,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         onSelectAudit={onSelectAudit}
         onNavigateToInitiate={onNavigateToInitiate}
         onResetSeedData={onResetSeedData}
+      />
+
+      {/* Trend Analysis View: Frequency of Audit Risk Levels Over Time (Recharts Line Chart) */}
+      <AuditRiskFrequencyTrendChart
+        history={history}
+        onSelectAudit={onSelectAudit}
       />
 
       {/* --- ANALYTICAL CHARTS SECTION (Requirements 5, 11, 12) --- */}

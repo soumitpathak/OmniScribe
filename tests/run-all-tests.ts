@@ -5,6 +5,7 @@
 import { runAuditEngineTests } from './audit-engine.test';
 import { runDashboardLogicTests } from './dashboard-logic.test';
 import { runEdgeCasesTests } from './edge-cases.test';
+import { runPreemptiveAndTrendTests } from './preemptive-confidence-frequency.test';
 
 async function runAll() {
   console.log('=======================================================');
@@ -16,6 +17,7 @@ async function runAll() {
     runAuditEngineTests();
     runDashboardLogicTests();
     runEdgeCasesTests();
+    runPreemptiveAndTrendTests();
 
     const elapsed = Date.now() - startTime;
     console.log('=======================================================');

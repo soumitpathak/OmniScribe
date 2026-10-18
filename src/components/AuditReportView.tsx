@@ -8,6 +8,8 @@ import { ActionItemsCard } from './ActionItemsCard';
 import { DutyTariffCard } from './DutyTariffCard';
 import { AgentThoughtTrace } from './AgentThoughtTrace';
 import { ItemRiskFactorScale } from './ItemRiskFactorScale';
+import { ConfidenceScoreGauge } from './ConfidenceScoreGauge';
+import { PreemptiveActionsCard } from './PreemptiveActionsCard';
 import { generateAuditPDF } from '../utils/pdfGenerator';
 import { useToast } from '../context/ToastContext';
 import {
@@ -46,7 +48,7 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'risk_factors' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'preemptive' | 'risk_factors' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
 
   // Status badge styling
   let statusBadgeBg = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
@@ -214,7 +216,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
           {/* Action Buttons */}
           <div className="flex flex-wrap lg:flex-col gap-2 shrink-0">
-            {/* Formatted Download PDF Report Button via jspdf */}
+            {/* Formatted Export PDF Button via jspdf */}
             <button
               onClick={handleDownloadPDF}
               type="button"
@@ -223,7 +225,7 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               title="Download official PDF compliance report summarizing all audit findings, risk factors, and remediation requirements"
             >
               <FileDown className="w-4 h-4 text-emerald-100" />
-              <span>{isGeneratingPdf ? 'Compiling PDF Report...' : 'Download PDF Report'}</span>
+              <span>{isGeneratingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
             </button>
 
             <button
@@ -268,8 +270,8 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         </div>
       </div>
 
-      {/* Grid: Risk Meter + Duty Assessment */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Grid: Risk Meter + AI Certainty Gauge + Duty Assessment */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1">
           <RiskMeter
             score={audit.risk_score}
@@ -278,7 +280,13 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           />
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
+          <ConfidenceScoreGauge
+            audit={audit}
+          />
+        </div>
+
+        <div className="md:col-span-2 lg:col-span-2">
           <DutyTariffCard
             tariffAnalysis={audit.duty_tariff_analysis}
             destinationCountry={audit.destination_country}
@@ -361,11 +369,32 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
           Mitigation Action Plan ({audit.recommended_actions?.length || 0})
         </button>
+        <button
+          onClick={() => setActiveTab('preemptive')}
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            activeTab === 'preemptive'
+              ? 'bg-rose-950/40 text-rose-300 border border-rose-500/50'
+              : 'text-slate-400 hover:text-rose-300'
+          }`}
+        >
+          <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+          <span>Preemptive Actions & Incoterms</span>
+          {(audit.risk_score >= 50 || audit.risk_level === 'CRITICAL' || audit.audit_status !== 'APPROVED') && (
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              HIGH RISK
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Tab Contents */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
+          {/* Preemptive Actions Card for High-Risk Consignments */}
+          {(audit.risk_score >= 50 || audit.risk_level === 'CRITICAL' || audit.audit_status !== 'APPROVED') && (
+            <PreemptiveActionsCard audit={audit} />
+          )}
+
           {/* Risk-Factor Visualization with Color-Coded Intensity Scale */}
           <ItemRiskFactorScale
             items={audit.extracted_entities?.items || []}
@@ -417,13 +446,19 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               title="Download PDF report summary with compliance findings"
             >
               <FileDown className="w-4 h-4 text-emerald-100" />
-              <span>{isGeneratingPdf ? 'Compiling PDF Report...' : 'Download PDF Report'}</span>
+              <span>{isGeneratingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
             </button>
           </div>
 
           {audit.agent_reasoning_trace && (
             <AgentThoughtTrace traces={audit.agent_reasoning_trace} />
           )}
+        </div>
+      )}
+
+      {activeTab === 'preemptive' && (
+        <div className="space-y-6">
+          <PreemptiveActionsCard audit={audit} />
         </div>
       )}
 
