@@ -9,6 +9,13 @@ import {
 } from '../types/compliance';
 import { useToast } from '../context/ToastContext';
 import {
+  saveCommentToFirestore,
+  subscribeCommentsFromFirestore,
+  updateCommentInFirestore,
+  deleteCommentFromFirestore,
+  auth,
+} from '../services/firebase';
+import {
   MessageSquare,
   Send,
   Pin,
@@ -394,9 +401,27 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
     ? 'from-purple-500 to-pink-600'
     : activeOfficer.avatarColor;
 
-  // Fetch comments from server API with local storage fallback
+  // Fetch comments from server API & Firestore with local storage fallback
   useEffect(() => {
     let isMounted = true;
+    let firestoreUnsub: (() => void) | null = null;
+
+    // Attach real-time Firestore listener for live multi-user team comments
+    try {
+      firestoreUnsub = subscribeCommentsFromFirestore(audit.audit_id, (remoteComments) => {
+        if (isMounted && Array.isArray(remoteComments) && remoteComments.length > 0) {
+          setComments(remoteComments);
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(remoteComments));
+          } catch (e) {
+            console.warn(e);
+          }
+          setLoading(false);
+        }
+      });
+    } catch (e) {
+      console.warn('Firestore comment subscription notice:', e);
+    }
 
     const fetchComments = async () => {
       setLoading(true);
@@ -404,7 +429,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
         const response = await fetch(`/api/audits/${encodeURIComponent(audit.audit_id)}/comments`);
         if (response.ok) {
           const data = await response.json();
-          if (isMounted && Array.isArray(data.comments)) {
+          if (isMounted && Array.isArray(data.comments) && data.comments.length > 0) {
             setComments(data.comments);
             localStorage.setItem(storageKey, JSON.stringify(data.comments));
             setLoading(false);
@@ -420,7 +445,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
         const cached = localStorage.getItem(storageKey);
         if (cached && isMounted) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
             setComments(parsed);
             setLoading(false);
             return;
@@ -532,6 +557,9 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
 
     return () => {
       isMounted = false;
+      if (firestoreUnsub) {
+        firestoreUnsub();
+      }
     };
   }, [audit.audit_id]);
 
@@ -607,6 +635,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
         const created: AuditComment = await res.json();
         const updated = created.is_pinned ? [created, ...comments] : [...comments, created];
         saveCommentsLocally(updated);
+        saveCommentToFirestore(audit.audit_id, created, auth.currentUser?.uid || 'officer').catch(() => {});
         toast.success('Internal Note Added', `Logged under ${selectedCategory.replace('_', ' ')}`);
       } else {
         throw new Error('Server returned non-200');
@@ -632,6 +661,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
       };
       const updated = localComment.is_pinned ? [localComment, ...comments] : [...comments, localComment];
       saveCommentsLocally(updated);
+      saveCommentToFirestore(audit.audit_id, localComment, auth.currentUser?.uid || 'officer').catch(() => {});
       toast.info('Note Saved Locally', 'Internal note logged into audit dossier.');
     } finally {
       setNewCommentContent('');
@@ -690,6 +720,10 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
           return c;
         });
         saveCommentsLocally(updated);
+        const parentTarget = updated.find((c) => c.id === commentId);
+        if (parentTarget) {
+          updateCommentInFirestore(audit.audit_id, commentId, { replies: parentTarget.replies }).catch(() => {});
+        }
         toast.success(
           replyingToReplyId ? 'Sub-Conversation Reply Added' : 'Reply Added',
           replyingToReplyId
@@ -729,6 +763,10 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
         return c;
       });
       saveCommentsLocally(updated);
+      const parentTarget = updated.find((c) => c.id === commentId);
+      if (parentTarget) {
+        updateCommentInFirestore(audit.audit_id, commentId, { replies: parentTarget.replies }).catch(() => {});
+      }
       toast.info('Reply Saved', 'Sub-conversation response logged.');
     } finally {
       setReplyContent('');
@@ -757,6 +795,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
       // ignore
     }
 
+    updateCommentInFirestore(audit.audit_id, commentId, { is_pinned: nextPin }).catch(() => {});
     const updated = comments.map((c) => (c.id === commentId ? { ...c, is_pinned: nextPin } : c));
     const sorted = [...updated].sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0));
     saveCommentsLocally(sorted);
@@ -779,6 +818,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
       // ignore
     }
 
+    updateCommentInFirestore(audit.audit_id, commentId, { resolved: nextResolved }).catch(() => {});
     const updated = comments.map((c) => (c.id === commentId ? { ...c, is_resolved: nextResolved } : c));
     saveCommentsLocally(updated);
     toast.success(
@@ -800,6 +840,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
       // ignore
     }
 
+    deleteCommentFromFirestore(audit.audit_id, commentId).catch(() => {});
     const updated = comments.filter((c) => c.id !== commentId);
     saveCommentsLocally(updated);
     toast.info('Note Deleted', 'Audit discussion record removed.');
@@ -817,6 +858,10 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
       return c;
     });
     saveCommentsLocally(updated);
+    const parentTarget = updated.find((c) => c.id === commentId);
+    if (parentTarget) {
+      updateCommentInFirestore(audit.audit_id, commentId, { replies: parentTarget.replies }).catch(() => {});
+    }
     toast.info('Reply Deleted', 'Sub-conversation entry removed.');
   };
 
@@ -837,6 +882,7 @@ export const AuditCommentSection: React.FC<AuditCommentSectionProps> = ({
       // ignore
     }
 
+    updateCommentInFirestore(audit.audit_id, commentId, { content: editingText.trim() }).catch(() => {});
     const updated = comments.map((c) =>
       c.id === commentId
         ? {

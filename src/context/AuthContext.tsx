@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserProfile } from '../types/auth';
+import { auth, signInWithGoogle, signOutUser, syncUserProfileToFirestore, getUserProfileFromFirestore } from '../services/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 const STORAGE_KEY = 'omniscribe_user_session_v1';
 
@@ -35,8 +37,10 @@ export const DEMO_USERS: Record<string, UserProfile> = {
 
 interface AuthContextValue {
   user: UserProfile | null;
+  firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   login: (email: string, password?: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string }>;
   signup: (
     name: string,
@@ -54,24 +58,92 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Restore session from localStorage on initial load
+  // Listen to Firebase Auth state changes
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && parsed.email) {
-          setUser(parsed);
+    const unsubscribe = onAuthStateChanged(auth, async (currentFirebaseUser) => {
+      setFirebaseUser(currentFirebaseUser);
+
+      if (currentFirebaseUser) {
+        try {
+          const remoteProfile = await getUserProfileFromFirestore(currentFirebaseUser.uid);
+          const name = remoteProfile?.displayName || currentFirebaseUser.displayName || currentFirebaseUser.email?.split('@')[0] || 'Compliance Officer';
+          const initials = name
+            .split(' ')
+            .map((p: string) => p.charAt(0))
+            .join('')
+            .slice(0, 2)
+            .toUpperCase() || 'CO';
+
+          const mappedUser: UserProfile = {
+            id: currentFirebaseUser.uid,
+            name: name,
+            email: currentFirebaseUser.email || '',
+            company: remoteProfile?.company || 'OmniScribe Global Logistics',
+            role: (remoteProfile?.role as UserProfile['role']) || 'Logistics Compliance Officer',
+            avatarInitials: initials,
+            joinedAt: remoteProfile?.createdAt ? remoteProfile.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+          };
+
+          setUser(mappedUser);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(mappedUser));
+        } catch (e) {
+          console.warn('Failed to resolve Firebase user profile:', e);
+        }
+      } else {
+        // Fall back to stored session if present
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && parsed.email) {
+              setUser(parsed);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to parse stored user session:', e);
         }
       }
-    } catch (e) {
-      console.warn('Failed to parse stored user session:', e);
-    } finally {
       setIsLoading(false);
-    }
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    try {
+      const fbUser = await signInWithGoogle();
+      const name = fbUser.displayName || fbUser.email?.split('@')[0] || 'Compliance Officer';
+      const initials = name
+        .split(' ')
+        .map((p) => p.charAt(0))
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'CO';
+
+      const newUser: UserProfile = {
+        id: fbUser.uid,
+        name: name,
+        email: fbUser.email || '',
+        company: 'OmniScribe Global Logistics',
+        role: 'Logistics Compliance Officer',
+        avatarInitials: initials,
+        joinedAt: new Date().toISOString().split('T')[0],
+      };
+
+      setUser(newUser);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+      setIsLoading(false);
+      return { success: true };
+    } catch (err: any) {
+      setIsLoading(false);
+      console.error('Google Sign In failed:', err);
+      return { success: false, error: err?.message || 'Google sign-in failed. Please try again.' };
+    }
+  };
 
   const login = async (
     email: string,
@@ -79,8 +151,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     rememberMe = true
   ): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    // Simulate brief network latency for realism
-    await new Promise((res) => setTimeout(res, 400));
+    await new Promise((res) => setTimeout(res, 300));
 
     const trimmed = email.trim().toLowerCase();
     if (!trimmed || !trimmed.includes('@')) {
@@ -88,7 +159,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: false, error: 'Please enter a valid work email address.' };
     }
 
-    // Check if matches known demo accounts or generate custom user profile
     const namePart = trimmed.split('@')[0];
     const formattedName = namePart
       .split(/[._-]/)
@@ -132,7 +202,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     role: UserProfile['role']
   ): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
-    await new Promise((res) => setTimeout(res, 500));
+    await new Promise((res) => setTimeout(res, 300));
 
     if (!name.trim()) {
       setIsLoading(false);
@@ -173,7 +243,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const forgotPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
     setIsLoading(true);
-    await new Promise((res) => setTimeout(res, 500));
+    await new Promise((res) => setTimeout(res, 300));
     setIsLoading(false);
 
     if (!email || !email.includes('@')) {
@@ -197,7 +267,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    signOutUser().catch(() => {});
     setUser(null);
+    setFirebaseUser(null);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (e) {
@@ -209,8 +281,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     <AuthContext.Provider
       value={{
         user,
+        firebaseUser,
         isAuthenticated: Boolean(user),
         isLoading,
+        loginWithGoogle,
         login,
         signup,
         forgotPassword,

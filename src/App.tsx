@@ -16,13 +16,18 @@ import { AuditResponse } from './types/compliance';
 import { RegionAnnotation } from './types/auth';
 import { useToast } from './context/ToastContext';
 import { useAuth } from './context/AuthContext';
+import {
+  saveAuditToFirestore,
+  deleteAuditFromFirestore,
+  subscribeAuditsFromFirestore,
+} from './services/firebase';
 import { AlertCircle, Sparkles, ShieldCheck, ArrowRight, ArrowLeft } from 'lucide-react';
 
 const STORAGE_KEY = 'omniscribe_audit_history_v1';
 
 export default function App() {
   const toast = useToast();
-  const { isAuthenticated, user, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, user, firebaseUser, isLoading: isAuthLoading } = useAuth();
 
   const [activePage, setActivePage] = useState<'dashboard' | 'initiate_audit'>('dashboard');
   const [selectedCountry, setSelectedCountry] = useState<string>('USA');
@@ -155,7 +160,37 @@ export default function App() {
     }
   }, []);
 
-  // Save audit history to local storage
+  // Real-time Firestore synchronization for audits
+  useEffect(() => {
+    if (!firebaseUser) return;
+    try {
+      const unsubscribe = subscribeAuditsFromFirestore((remoteAudits) => {
+        if (Array.isArray(remoteAudits) && remoteAudits.length > 0) {
+          setHistory((prev) => {
+            const auditMap = new Map<string, AuditResponse>();
+            remoteAudits.forEach((r) => auditMap.set(r.audit_id, sanitizeAudit(r)));
+            prev.forEach((p) => {
+              if (!auditMap.has(p.audit_id)) {
+                auditMap.set(p.audit_id, p);
+              }
+            });
+            const merged = Array.from(auditMap.values()).slice(0, 50);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            } catch (e) {
+              console.warn(e);
+            }
+            return merged;
+          });
+        }
+      });
+      return () => unsubscribe();
+    } catch (err) {
+      console.warn('Could not establish Firestore audit listener:', err);
+    }
+  }, [firebaseUser]);
+
+  // Save audit history to local storage & Firestore
   const saveAuditToHistory = (audit: AuditResponse) => {
     const cleanAudit = sanitizeAudit(audit);
     setHistory((prev) => {
@@ -167,6 +202,13 @@ export default function App() {
       }
       return updated;
     });
+
+    // Sync to Firestore if authenticated
+    if (firebaseUser?.uid || user?.id) {
+      saveAuditToFirestore(cleanAudit, firebaseUser?.uid || user?.id || 'demo-officer').catch((err) => {
+        console.warn('Firestore audit sync notice:', err);
+      });
+    }
   };
 
   const handleClearHistory = () => {
@@ -192,6 +234,10 @@ export default function App() {
     if (currentAudit?.audit_id === auditId) {
       setCurrentAudit(null);
     }
+    // Delete from Firestore if authenticated
+    deleteAuditFromFirestore(auditId).catch((err) => {
+      console.warn('Firestore delete notice:', err);
+    });
     toast.info('Record Removed', `Audit record ${auditId} deleted from repository.`);
   };
 

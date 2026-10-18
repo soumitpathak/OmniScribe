@@ -1,7 +1,7 @@
 # OmniScribe Firestore Security Specification & Hardening Guide
 
 ## 1. System Invariants & RBAC Architecture
-- **Super Administrator**: `bababridge@gmail.com` possesses system-level privileges with bootstrap rights in rules.
+- **Super Administrator**: `soumitpathak01@gmail.com` and `bababridge@gmail.com` possess system-level privileges with bootstrap rights in rules.
 - **Roles**:
   - `ADMIN`: Full clearance, rule modification, deletion privileges, user permission elevation.
   - `OFFICER`: Autonomous dossier audit generation, discrepancy resolution, note authoring.
