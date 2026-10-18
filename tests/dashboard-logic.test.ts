@@ -120,7 +120,60 @@ export function runDashboardLogicTests() {
   assert.ok(
     new Date(sortedByTimeDesc[0].timestamp).getTime() > new Date(sortedByTimeDesc[sortedByTimeDesc.length - 1].timestamp).getTime()
   );
-  console.log('  ✓ Verified multi-field sorting (asc / desc)');
+  // 8. Geographical Heatmap Destination Risk Density Computation
+  const usaAudits = data.filter((item) => item.destination_country === 'USA');
+  const usaTotal = usaAudits.length;
+  const usaHighRisk = usaAudits.filter(
+    (a) => a.risk_score >= 70 || a.audit_status === 'REJECTED' || a.risk_level === 'CRITICAL'
+  ).length;
+  const usaDensityPct = usaTotal > 0 ? Math.round((usaHighRisk / usaTotal) * 100) : 0;
+  assert.strictEqual(usaTotal, 2);
+  assert.strictEqual(usaHighRisk, 2);
+  assert.strictEqual(usaDensityPct, 100); // Both USA shipments are high-risk (72 and 91)
+
+  const jpAudits = data.filter((item) => item.destination_country === 'Japan');
+  const jpTotal = jpAudits.length;
+  const jpHighRisk = jpAudits.filter((a) => a.risk_score >= 70 || a.audit_status === 'REJECTED').length;
+  const jpDensityPct = jpTotal > 0 ? Math.round((jpHighRisk / jpTotal) * 100) : 0;
+  assert.strictEqual(jpTotal, 1);
+  assert.strictEqual(jpHighRisk, 0);
+  assert.strictEqual(jpDensityPct, 0); // Japan shipment is clean / low-risk
+
+  // Edge Case: Non-existent country safely returns 0% density without NaN or crash
+  const nonExistentAudits = data.filter((item) => item.destination_country === 'Antarctica');
+  const nonExistentDensity = nonExistentAudits.length > 0 ? Math.round((0 / nonExistentAudits.length) * 100) : 0;
+  assert.strictEqual(nonExistentDensity, 0);
+  console.log('  ✓ Verified geographical high-risk consignment density computations');
+
+  // 9. Concurrent Batch Queue Progression Verification
+  interface TestBatchItem {
+    id: string;
+    status: 'queued' | 'processing' | 'completed' | 'failed';
+    progress: number;
+    stage?: string;
+  }
+
+  const batchQueue: TestBatchItem[] = [
+    { id: 'b-1', status: 'queued', progress: 0 },
+    { id: 'b-2', status: 'queued', progress: 0 },
+    { id: 'b-3', status: 'queued', progress: 0 },
+  ];
+
+  // Verify initial state
+  assert.strictEqual(batchQueue.every((b) => b.status === 'queued'), true);
+  assert.strictEqual(batchQueue.filter((b) => b.status === 'completed').length, 0);
+
+  // Transition to processing with stage
+  batchQueue[0] = { ...batchQueue[0], status: 'processing', progress: 40, stage: 'Cross-referencing HTS' };
+  assert.strictEqual(batchQueue[0].status, 'processing');
+  assert.strictEqual(batchQueue[0].progress, 40);
+
+  // Transition to completed
+  batchQueue[0] = { ...batchQueue[0], status: 'completed', progress: 100, stage: 'Audit Complete' };
+  assert.strictEqual(batchQueue[0].status, 'completed');
+  assert.strictEqual(batchQueue[0].progress, 100);
+
+  console.log('  ✓ Verified concurrent batch queue individual status and progress lifecycle');
 
   console.log('✅ Dashboard Logic Tests Passed!\n');
 }

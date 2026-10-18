@@ -26,6 +26,7 @@ import { AuditResponse } from '../types/compliance';
 import { FilePreviewModal } from './FilePreviewModal';
 import { useToast } from '../context/ToastContext';
 import { RegionAnnotation } from '../types/auth';
+import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
 
 export interface BatchItem {
   id: string;
@@ -38,6 +39,7 @@ export interface BatchItem {
   documentType: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress: number;
+  stage?: string;
   result?: AuditResponse;
   error?: string;
 }
@@ -215,6 +217,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
       documentType: documentType,
       status: 'queued',
       progress: 0,
+      stage: 'Queued for regulatory verification',
     }));
 
     setBatchQueue((prev) => [...prev, ...newItems]);
@@ -222,83 +225,203 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     toast.info('Batch Manifests Added', `Added ${files.length} document(s) to concurrent audit queue.`);
   };
 
-  // Execute Concurrent Batch Audit
+  // Add built-in sample documents to batch queue for instant concurrent auditing test
+  const handleLoadSampleBatch = () => {
+    const newSamples: BatchItem[] = SAMPLE_DOCUMENTS.map((doc, idx) => ({
+      id: `batch-sample-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 5)}`,
+      name: `${doc.title.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_-]/g, '')}.pdf`,
+      size: 1024 * (52 + idx * 31),
+      sampleText: doc.sample_text,
+      sourceCountry: doc.title.includes('China')
+        ? 'China'
+        : doc.title.includes('Taiwan')
+        ? 'Taiwan'
+        : doc.title.includes('India')
+        ? 'India'
+        : 'Germany',
+      destinationCountry: doc.destination_country,
+      documentType: doc.document_type,
+      status: 'queued',
+      progress: 0,
+      stage: 'Queued for regulatory verification',
+    }));
+
+    setBatchQueue((prev) => [...prev, ...newSamples]);
+    setActiveTab('batch');
+    toast.success('Sample Manifests Loaded', `Enqueued ${newSamples.length} international shipping documents for batch auditing.`);
+  };
+
+  const handleRemoveBatchItem = (id: string) => {
+    setBatchQueue((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleUpdateItemCountry = (id: string, country: string) => {
+    setBatchQueue((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, destinationCountry: country } : item))
+    );
+  };
+
+  // Execute Individual Batch Item through Audit Engine
+  const processBatchItem = async (item: BatchItem) => {
+    // Stage 1: Ingestion & OCR
+    setBatchQueue((prev) =>
+      prev.map((b) =>
+        b.id === item.id
+          ? { ...b, status: 'processing', progress: 15, stage: 'Ingesting document & OCR extraction...' }
+          : b
+      )
+    );
+
+    // Dynamic timer to simulate real-world analysis progression while waiting for server response
+    const progressTimer = setInterval(() => {
+      setBatchQueue((prev) =>
+        prev.map((b) => {
+          if (b.id !== item.id || b.status !== 'processing') return b;
+          const current = b.progress;
+          const increment = Math.floor(Math.random() * 12) + 8;
+          const nextVal = Math.min(88, current + increment);
+          let stageLabel = b.stage;
+          if (nextVal >= 70) {
+            stageLabel = 'Synthesizing statutory verdict & customs remedies...';
+          } else if (nextVal >= 45) {
+            stageLabel = 'Screening Hazardous Materials (UN3480) & Trade Sanctions...';
+          } else if (nextVal >= 25) {
+            stageLabel = 'Cross-referencing Harmonized Tariff System (HTS)...';
+          }
+          return { ...b, progress: nextVal, stage: stageLabel };
+        })
+      );
+    }, 450);
+
+    try {
+      let auditResult: AuditResponse;
+
+      if (item.file) {
+        const formData = new FormData();
+        formData.append('file', item.file);
+        formData.append('sourceCountry', item.sourceCountry || sourceCountry);
+        formData.append('destinationCountry', item.destinationCountry);
+        formData.append('documentType', item.documentType);
+
+        const res = await fetch('/api/audit', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Audit request failed with status ${res.status}`);
+        }
+        auditResult = await res.json();
+      } else {
+        const res = await fetch('/api/audit-json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceCountry: item.sourceCountry || sourceCountry,
+            destinationCountry: item.destinationCountry,
+            documentType: item.documentType,
+            rawText: item.sampleText || '',
+            fileName: item.name,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Audit request failed with status ${res.status}`);
+        }
+        auditResult = await res.json();
+      }
+
+      clearInterval(progressTimer);
+
+      // Immediately notify parent so dashboard statistics update in real-time
+      if (onBatchAuditCompleted) {
+        onBatchAuditCompleted(auditResult);
+      }
+
+      setBatchQueue((prev) =>
+        prev.map((b) =>
+          b.id === item.id
+            ? {
+                ...b,
+                status: 'completed',
+                progress: 100,
+                stage: 'Audit Completed',
+                result: auditResult,
+              }
+            : b
+        )
+      );
+    } catch (err: any) {
+      clearInterval(progressTimer);
+      console.error(`Batch item ${item.name} failed:`, err);
+      setBatchQueue((prev) =>
+        prev.map((b) =>
+          b.id === item.id
+            ? {
+                ...b,
+                status: 'failed',
+                progress: 100,
+                stage: 'Audit Failed',
+                error: err.message || 'Audit execution encountered a technical error',
+              }
+            : b
+        )
+      );
+    }
+  };
+
+  // Execute Concurrent Batch Audit using a concurrency pool (up to 3 concurrent workers)
   const handleRunBatchProcessing = async () => {
-    if (batchQueue.length === 0 || isBatchRunning) return;
+    const pendingItems = batchQueue.filter((item) => item.status !== 'completed');
+    if (pendingItems.length === 0) {
+      toast.info('All Audits Completed', 'All documents in the batch queue have already been audited.');
+      return;
+    }
+    if (isBatchRunning) return;
 
     setIsBatchRunning(true);
-    toast.info('Concurrent Batch Audit Started', `Processing ${batchQueue.length} shipments concurrently...`);
+    toast.info(
+      'Concurrent Batch Audit Started',
+      `Processing ${pendingItems.length} shipping manifests concurrently (up to 3 parallel workers)...`
+    );
 
-    // Process files with concurrency limit
-    const updatedQueue = [...batchQueue];
+    const CONCURRENCY_LIMIT = 3;
+    const executing = new Set<Promise<void>>();
 
-    for (let i = 0; i < updatedQueue.length; i++) {
-      const item = updatedQueue[i];
-      if (item.status === 'completed') continue;
+    for (const item of pendingItems) {
+      const p = processBatchItem(item).then(() => {
+        executing.delete(p);
+      });
+      executing.add(p);
 
-      // Mark processing & simulate initial progress
-      setBatchQueue((prev) =>
-        prev.map((b) => (b.id === item.id ? { ...b, status: 'processing', progress: 35 } : b))
-      );
-
-      try {
-        let auditResult: AuditResponse;
-
-        if (item.file) {
-          const formData = new FormData();
-          formData.append('file', item.file);
-          formData.append('sourceCountry', item.sourceCountry || sourceCountry);
-          formData.append('destinationCountry', item.destinationCountry);
-          formData.append('documentType', item.documentType);
-
-          const res = await fetch('/api/audit', {
-            method: 'POST',
-            body: formData,
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          auditResult = await res.json();
-        } else {
-          const res = await fetch('/api/audit-json', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sourceCountry: item.sourceCountry || sourceCountry,
-              destinationCountry: item.destinationCountry,
-              documentType: item.documentType,
-              rawText: item.sampleText || '',
-              fileName: item.name,
-            }),
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          auditResult = await res.json();
-        }
-
-        // Notify app level so history is updated
-        if (onBatchAuditCompleted) {
-          onBatchAuditCompleted(auditResult);
-        }
-
-        setBatchQueue((prev) =>
-          prev.map((b) =>
-            b.id === item.id
-              ? { ...b, status: 'completed', progress: 100, result: auditResult }
-              : b
-          )
-        );
-      } catch (err: any) {
-        console.error(`Batch item ${item.name} failed:`, err);
-        setBatchQueue((prev) =>
-          prev.map((b) =>
-            b.id === item.id
-              ? { ...b, status: 'failed', progress: 100, error: err.message || 'Audit failed' }
-              : b
-          )
-        );
+      if (executing.size >= CONCURRENCY_LIMIT) {
+        await Promise.race(executing);
       }
     }
 
+    await Promise.all(executing);
     setIsBatchRunning(false);
-    toast.success('Concurrent Batch Audit Complete', 'All queued logistics files processed through statutory rules.');
+
+    // Compute summary breakdown
+    setBatchQueue((currentQueue) => {
+      const completed = currentQueue.filter((b) => b.status === 'completed' && b.result);
+      const approved = completed.filter((b) => b.result?.audit_status === 'APPROVED').length;
+      const flagged = completed.filter((b) => b.result?.audit_status === 'FLAGGED').length;
+      const rejected = completed.filter((b) => b.result?.audit_status === 'REJECTED').length;
+      const failed = currentQueue.filter((b) => b.status === 'failed').length;
+
+      toast.success(
+        'Concurrent Batch Audit Complete',
+        `${completed.length} audited: ${approved} Approved, ${flagged} Flagged, ${rejected} Rejected${failed > 0 ? `, ${failed} Failed` : ''}.`
+      );
+
+      return currentQueue;
+    });
+  };
+
+  // Retry an individual failed item concurrently
+  const handleRetryBatchItem = (item: BatchItem) => {
+    processBatchItem(item);
   };
 
   const handleInspectBatchResult = (item: BatchItem) => {
@@ -626,7 +749,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
           </form>
         )}
 
-        {/* --- TAB 2: BATCH PROCESSING (Requirement 9) --- */}
+        {/* --- TAB 2: BATCH PROCESSING --- */}
         {activeTab === 'batch' && (
           <div className="space-y-4">
             <input
@@ -642,26 +765,66 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
               className="hidden"
             />
 
-            {/* Batch Controls & Drop Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-950/70 border border-slate-800">
-              <div className="flex items-center gap-3">
+            {/* Batch Ingestion Dropzone & Action Bar */}
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  handleBatchFiles(Array.from(e.dataTransfer.files));
+                }
+              }}
+              className={`p-5 rounded-2xl border-2 border-dashed transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                isDragging
+                  ? 'border-cyan-400 bg-cyan-500/10 scale-[1.01]'
+                  : 'border-slate-700/80 hover:border-cyan-500/60 bg-slate-950/60'
+              }`}
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>Concurrent Batch Document Ingestion</span>
+                    <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-normal">
+                      Up to 3 Parallel Workers
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Drop multiple bills of lading, invoices, or manifests to run simultaneous autonomous audits.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => batchFileInputRef.current?.click()}
                   className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Add Files to Batch</span>
+                  <span>Select Multiple Files</span>
                 </button>
-              </div>
 
-              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLoadSampleBatch}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Load 4 realistic international shipping test documents"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Load Sample Batch</span>
+                </button>
+
                 {batchQueue.length > 0 && (
                   <button
                     type="button"
                     onClick={handleClearBatchQueue}
                     disabled={isBatchRunning}
-                    className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer border border-transparent hover:border-slate-700"
                     title="Clear batch queue"
                   >
                     <RotateCcw className="w-4 h-4" />
@@ -675,13 +838,13 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                   className={`px-5 py-2 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
                     batchQueue.length === 0 || isBatchRunning
                       ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                      : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-white shadow-md shadow-emerald-500/25 cursor-pointer'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-white shadow-md shadow-emerald-500/25 cursor-pointer transform hover:-translate-y-0.5'
                   }`}
                 >
                   {isBatchRunning ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Auditing Batch Concurrently...</span>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                      <span>Auditing Concurrently...</span>
                     </>
                   ) : (
                     <>
@@ -695,43 +858,55 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
 
             {/* Batch Progress Overview Bar */}
             {batchQueue.length > 0 && (
-              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-slate-300">
-                    Batch Completion: <strong className="text-emerald-400">{batchCompletedCount}/{batchQueue.length}</strong>
-                  </span>
-                  <span className="text-slate-400">
-                    {Math.round((batchCompletedCount / batchQueue.length) * 100)}% Complete
-                  </span>
+              <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between text-xs font-mono gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-300">
+                      Batch Completion: <strong className="text-emerald-400">{batchCompletedCount}/{batchQueue.length}</strong>
+                    </span>
+                    {isBatchRunning && (
+                      <span className="flex items-center gap-1 text-[11px] text-cyan-400 animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                        <span>Active Concurrency</span>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-slate-400 text-[11px]">
+                    <span>{Math.round((batchCompletedCount / batchQueue.length) * 100)}% Complete</span>
+                  </div>
                 </div>
-                <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 rounded-full transition-all duration-300"
+                    className="h-full bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-400 rounded-full transition-all duration-300 shadow-sm shadow-emerald-500/30"
                     style={{ width: `${(batchCompletedCount / batchQueue.length) * 100}%` }}
                   />
                 </div>
               </div>
             )}
 
-            {/* Batch Queue List (Requirement 9) */}
-            <div className="space-y-2.5 max-h-72 overflow-y-auto">
+            {/* Batch Queue List with Individual Progress State */}
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
               {batchQueue.length === 0 ? (
-                <div className="py-10 text-center text-slate-500 text-xs border border-dashed border-slate-800 rounded-2xl">
-                  No documents in batch queue. Click <strong>"Add Files to Batch"</strong> or load test samples above!
+                <div className="py-12 text-center text-slate-400 text-xs border border-dashed border-slate-800 rounded-2xl bg-slate-950/40 p-6 space-y-2">
+                  <FileUp className="w-8 h-8 text-slate-600 mx-auto" />
+                  <p className="text-slate-300 font-semibold text-sm">No shipments currently in batch queue</p>
+                  <p className="text-slate-500 max-w-sm mx-auto">
+                    Select multiple files using <strong>"Select Multiple Files"</strong>, drag documents onto this area, or test with <strong>"Load Sample Batch"</strong>.
+                  </p>
                 </div>
               ) : (
-                batchQueue.map((item, idx) => {
+                batchQueue.map((item) => {
                   let statusBadge = (
-                    <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                    <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
                       QUEUED
                     </span>
                   );
 
                   if (item.status === 'processing') {
                     statusBadge = (
-                      <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1">
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                        AUDITING
+                      <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-500/20 px-2 py-0.5 rounded border border-cyan-500/40 flex items-center gap-1 animate-pulse">
+                        <RefreshCw className="w-3 h-3 animate-spin text-cyan-400" />
+                        AUDITING {item.progress}%
                       </span>
                     );
                   } else if (item.status === 'completed' && item.result) {
@@ -739,7 +914,7 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                     const isFlag = item.result.audit_status === 'FLAGGED';
                     statusBadge = (
                       <span
-                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border uppercase ${
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border uppercase flex items-center gap-1 ${
                           isApp
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                             : isFlag
@@ -747,12 +922,14 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                             : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                         }`}
                       >
-                        {item.result.audit_status} ({item.result.risk_score}/100)
+                        {isApp ? <CheckCircle2 className="w-3 h-3" /> : isFlag ? <AlertTriangle className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
+                        <span>{item.result.audit_status} ({item.result.risk_score}/100)</span>
                       </span>
                     );
                   } else if (item.status === 'failed') {
                     statusBadge = (
-                      <span className="text-[10px] font-mono font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
+                      <span className="text-[10px] font-mono font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
                         FAILED
                       </span>
                     );
@@ -761,35 +938,121 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3 text-xs"
+                      className={`p-3.5 rounded-2xl border transition-all text-xs space-y-2.5 ${
+                        item.status === 'processing'
+                          ? 'bg-slate-900/95 border-cyan-500/40 shadow-lg shadow-cyan-500/10'
+                          : item.status === 'completed'
+                          ? 'bg-slate-950/80 border-slate-800/90'
+                          : item.status === 'failed'
+                          ? 'bg-rose-950/20 border-rose-500/30'
+                          : 'bg-slate-950/60 border-slate-800'
+                      }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                          <FileText className="w-4 h-4 text-cyan-400" />
+                      {/* Top Bar: Item Info & Badges */}
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
+                            item.status === 'completed'
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                              : item.status === 'processing'
+                              ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                          }`}>
+                            <FileText className="w-4 h-4" />
+                          </div>
+
+                          <div className="truncate">
+                            <p className="font-bold text-white truncate max-w-sm sm:max-w-md">{item.name}</p>
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
+                              <span>{(item.size / 1024).toFixed(0)} KB</span>
+                              <span>•</span>
+                              <span className="text-slate-300">{item.documentType}</span>
+                              <span>•</span>
+                              <div className="flex items-center gap-1">
+                                <span>Dest:</span>
+                                <select
+                                  value={item.destinationCountry}
+                                  onChange={(e) => handleUpdateItemCountry(item.id, e.target.value)}
+                                  disabled={item.status === 'processing' || isBatchRunning}
+                                  className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.2 text-[10px] text-emerald-400 font-mono focus:outline-none cursor-pointer"
+                                >
+                                  {DESTINATIONS.map((d) => (
+                                    <option key={d.code} value={d.code} className="bg-slate-900 text-white">
+                                      {d.flag} {d.code}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="truncate">
-                          <p className="font-bold text-white truncate max-w-xs">{item.name}</p>
-                          <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                            Dest: {item.destinationCountry} • {(item.size / 1024).toFixed(0)} KB
-                          </p>
+
+                        {/* Status & Action Buttons */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {statusBadge}
+
+                          {item.status === 'failed' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRetryBatchItem(item)}
+                              disabled={isBatchRunning}
+                              className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-semibold text-[11px] flex items-center gap-1 transition-colors cursor-pointer border border-rose-500/30"
+                              title="Retry audit"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Retry</span>
+                            </button>
+                          )}
+
+                          {item.result && (
+                            <button
+                              type="button"
+                              onClick={() => handleInspectBatchResult(item)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                              title="Inspect full audit dossier"
+                            >
+                              <span>Inspect Dossier</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {!isBatchRunning && item.status !== 'processing' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBatchItem(item.id)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Remove document from queue"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        {statusBadge}
-
-                        {item.result && (
-                          <button
-                            type="button"
-                            onClick={() => handleInspectBatchResult(item)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Inspect full audit report"
-                          >
-                            <span>Dossier</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
+                      {/* Individual Progress Bar and Stage Description */}
+                      {(item.status === 'processing' || item.progress > 0) && (
+                        <div className="pt-1 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="text-cyan-400 flex items-center gap-1.5">
+                              {item.status === 'processing' && <RefreshCw className="w-3 h-3 animate-spin shrink-0" />}
+                              <span>{item.stage || 'Auditing document...'}</span>
+                            </span>
+                            <span className="text-slate-400">{item.progress}%</span>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                item.status === 'completed'
+                                  ? 'bg-emerald-400'
+                                  : item.status === 'failed'
+                                  ? 'bg-rose-500'
+                                  : 'bg-gradient-to-r from-cyan-400 to-teal-400'
+                              }`}
+                              style={{ width: `${item.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })

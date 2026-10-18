@@ -52,6 +52,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
+import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
 import { BulkExportModal } from './BulkExportModal';
 import { useToast } from '../context/ToastContext';
 
@@ -266,7 +267,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         if (selectedStatus !== 'ALL' && item.audit_status !== selectedStatus) {
           return false;
         }
-        if (selectedCountry !== 'ALL' && item.destination_country !== selectedCountry) {
+        if (selectedCountry !== 'ALL' && (item.destination_country || '').toLowerCase() !== selectedCountry.toLowerCase()) {
           return false;
         }
         if (selectedRiskRange !== 'ALL') {
@@ -746,6 +747,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Geographical Risk Heatmap (Destination Country Consignment Risk Density) */}
+      <GeographicalRiskHeatmap
+        history={history}
+        selectedCountryFilter={selectedCountry}
+        onSelectCountryFilter={(countryCode) => {
+          setSelectedCountry(countryCode);
+          if (countryCode !== 'ALL') {
+            toast.info(
+              `Filtered by Destination: ${countryCode}`,
+              `Showing customs audit records destined for ${countryCode}. Click "Clear Filter" to view all.`
+            );
+          }
+        }}
+        onResetSeedData={onResetSeedData}
+      />
 
       {/* --- REQUIREMENT 2: 90-DAY CALENDAR HEATMAP --- */}
       <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300 fill-mode-both">
