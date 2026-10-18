@@ -425,7 +425,7 @@ export function compareInvoiceToDestinationTemplate(audit: AuditResponse): Templ
   fieldComparisons.push({
     fieldKey: 'incoterms',
     fieldName: 'Incoterms 2020 & Named Delivery Point',
-    category: 'trade_terms',
+    category: 'valuation',
     uploadedValue: incoterms || null,
     standardValue: incoterms ? (hasNamedPlace ? incoterms : `${incoterms} [Named Point]`) : spec.incotermRule,
     diffStatus: incotermStatus,

@@ -521,11 +521,15 @@ function executeDeterministicAudit(
   destinationCountry: string,
   hintText: string,
   focusRegions?: any[],
-  fileName?: string
+  fileName?: string,
+  tags?: string[]
 ): any {
   const result = generateDeterministicAudit(destinationCountry, hintText, focusRegions);
   if (fileName) {
     result.document_file_name = fileName;
+  }
+  if (tags && Array.isArray(tags) && tags.length > 0) {
+    result.applied_tags = tags;
   }
   if (focusRegions && Array.isArray(focusRegions) && focusRegions.length > 0) {
     const regionTraces = focusRegions.map((r: any, idx: number) =>
@@ -617,7 +621,8 @@ function normalizeAuditResponse(
   destinationCountry: string,
   frameworkAgency: string,
   fileName?: string,
-  rawText?: string
+  rawText?: string,
+  tags?: string[]
 ): any {
   if (!parsed || typeof parsed !== 'object') {
     parsed = {};
@@ -628,6 +633,9 @@ function normalizeAuditResponse(
   parsed.timestamp = parsed.timestamp || new Date().toISOString();
   if (fileName) {
     parsed.document_file_name = fileName;
+  }
+  if (tags && Array.isArray(tags) && tags.length > 0) {
+    parsed.applied_tags = tags;
   }
   parsed.audit_status = parsed.audit_status || 'FLAGGED';
   parsed.risk_score = typeof parsed.risk_score === 'number' ? parsed.risk_score : 50;
@@ -677,12 +685,21 @@ app.post('/api/audit', upload.single('file') as any, async (req: any, res: any) 
       console.warn('Could not parse focusRegions:', e);
     }
 
+    let preAuditTags: string[] = [];
+    try {
+      if (req.body.tags) {
+        preAuditTags = typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags;
+      }
+    } catch (e) {
+      console.warn('Could not parse tags:', e);
+    }
+
     const frameworkInfo = JURISDICTION_RULES[destinationCountry] || JURISDICTION_RULES.USA;
 
     // Check if we have an active Gemini API key and quota is healthy
     if (!process.env.GEMINI_API_KEY || geminiQuotaExhausted) {
       console.info('[OmniScribe Engine] Processing audit via Autonomous Statutory Compliance Engine.');
-      const result = executeDeterministicAudit(destinationCountry, rawText || file?.originalname || '', focusRegions, file?.originalname);
+      const result = executeDeterministicAudit(destinationCountry, rawText || file?.originalname || '', focusRegions, file?.originalname, preAuditTags);
       if (result?.extracted_entities && sourceCountry) {
         result.extracted_entities.shipper_country = sourceCountry;
       }
@@ -793,7 +810,8 @@ Please prioritize examining these specific sections and explicitly mention what 
         destinationCountry,
         frameworkInfo.agency,
         file?.originalname,
-        rawText
+        rawText,
+        preAuditTags
       );
       normalized.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
       try {
@@ -811,7 +829,7 @@ Please prioritize examining these specific sections and explicitly mention what 
       } else {
         console.warn('[OmniScribe Engine] Model API notice:', modelError?.message || 'Activating statutory fallback engine.');
       }
-      const fallback = executeDeterministicAudit(destinationCountry, rawText || file?.originalname || '', focusRegions, file?.originalname);
+      const fallback = executeDeterministicAudit(destinationCountry, rawText || file?.originalname || '', focusRegions, file?.originalname, preAuditTags);
       return res.json(fallback);
     }
   } catch (err: any) {
@@ -825,12 +843,12 @@ Please prioritize examining these specific sections and explicitly mention what 
 // JSON based audit endpoint
 app.post('/api/audit-json', async (req, res) => {
   try {
-    const { destinationCountry = 'USA', sourceCountry = 'China', documentType = 'Commercial Invoice', rawText = '', fileBase64, fileMimeType, fileName, focusRegions = [] } = req.body;
+    const { destinationCountry = 'USA', sourceCountry = 'China', documentType = 'Commercial Invoice', rawText = '', fileBase64, fileMimeType, fileName, focusRegions = [], tags = [] } = req.body;
     const frameworkInfo = JURISDICTION_RULES[destinationCountry] || JURISDICTION_RULES.USA;
 
     if (!process.env.GEMINI_API_KEY || geminiQuotaExhausted) {
       console.info('[OmniScribe Engine] Processing JSON audit via Autonomous Statutory Compliance Engine.');
-      const result = executeDeterministicAudit(destinationCountry, rawText || fileName || '', focusRegions, fileName);
+      const result = executeDeterministicAudit(destinationCountry, rawText || fileName || '', focusRegions, fileName, tags);
       if (result?.extracted_entities && sourceCountry) {
         result.extracted_entities.shipper_country = sourceCountry;
       }
@@ -884,7 +902,8 @@ Return valid JSON.`,
         destinationCountry,
         frameworkInfo.agency,
         fileName,
-        rawText
+        rawText,
+        tags
       );
       normalized.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
       try {
@@ -901,7 +920,7 @@ Return valid JSON.`,
       } else {
         console.warn('[OmniScribe Engine] Gemini JSON call notice:', modelError?.message || 'Activating statutory fallback engine.');
       }
-      const fallback = executeDeterministicAudit(destinationCountry, rawText || fileName || '', focusRegions, fileName);
+      const fallback = executeDeterministicAudit(destinationCountry, rawText || fileName || '', focusRegions, fileName, tags);
       return res.json(fallback);
     }
   } catch (err: any) {

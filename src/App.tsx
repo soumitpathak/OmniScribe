@@ -234,6 +234,7 @@ export default function App() {
     destinationCountry: string;
     documentType: string;
     focusRegions?: RegionAnnotation[];
+    tags?: string[];
   }) => {
     setIsLoading(true);
     setErrorMessage(null);
@@ -253,6 +254,9 @@ export default function App() {
         }
         if (data.focusRegions && data.focusRegions.length > 0) {
           formData.append('focusRegions', JSON.stringify(data.focusRegions));
+        }
+        if (data.tags && data.tags.length > 0) {
+          formData.append('tags', JSON.stringify(data.tags));
         }
 
         const response = await fetch('/api/audit', {
@@ -277,6 +281,7 @@ export default function App() {
             documentType: data.documentType,
             rawText: data.rawText,
             focusRegions: data.focusRegions || [],
+            tags: data.tags || [],
           }),
         });
 
@@ -286,6 +291,10 @@ export default function App() {
         }
 
         result = await response.json();
+      }
+
+      if (data.tags && data.tags.length > 0 && !result.applied_tags) {
+        result.applied_tags = data.tags;
       }
 
       setCurrentAudit(result);

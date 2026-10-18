@@ -11,6 +11,7 @@ import { ItemRiskFactorScale } from './ItemRiskFactorScale';
 import { ConfidenceScoreGauge } from './ConfidenceScoreGauge';
 import { PreemptiveActionsCard } from './PreemptiveActionsCard';
 import { QuickSummaryCard } from './QuickSummaryCard';
+import { SideBySideAuditCompareView } from './SideBySideAuditCompareView';
 import { generateAuditPDF } from '../utils/pdfGenerator';
 import { useToast } from '../context/ToastContext';
 import {
@@ -31,6 +32,8 @@ import {
   Layers,
   Activity,
   Flame,
+  Columns,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 interface AuditReportViewProps {
@@ -49,7 +52,17 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isSideBySide, setIsSideBySide] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'preemptive' | 'risk_factors' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
+
+  // Print report via browser print dialog
+  const handlePrint = () => {
+    try {
+      window.print();
+    } catch (e) {
+      handleDownloadPDF();
+    }
+  };
 
   // Status badge styling
   let statusBadgeBg = 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
@@ -232,6 +245,36 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               <span>{isGeneratingPdf ? 'Exporting PDF...' : 'Export PDF'}</span>
             </button>
 
+            {/* Side-by-Side Compare Toggle (Requirement 4) */}
+            <button
+              onClick={() => setIsSideBySide((prev) => !prev)}
+              type="button"
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                isSideBySide
+                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-500/20'
+                  : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 hover:border-cyan-500/50'
+              }`}
+              title="Toggle split-pane side-by-side comparison with another audit dossier from history"
+            >
+              <Columns className="w-4 h-4 text-cyan-400" />
+              <span>{isSideBySide ? 'Close Side-by-Side' : 'Side-by-Side Compare'}</span>
+              {history.length > 1 && (
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900/60 text-cyan-300">
+                  {history.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={handlePrint}
+              type="button"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 shadow-md transition-all cursor-pointer hover:text-white"
+              title="Print official customs audit dossier with extracted entities and compliance findings"
+            >
+              <Printer className="w-4 h-4 text-slate-400" />
+              <span>Print Report</span>
+            </button>
+
             <button
               onClick={handleExportJSON}
               type="button"
@@ -274,8 +317,18 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
         </div>
       </div>
 
-      {/* Grid: Risk Meter + AI Certainty Gauge + Duty Assessment */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Conditional Split-Pane Side-by-Side Comparison vs Standard Single Dossier View */}
+      {isSideBySide ? (
+        <SideBySideAuditCompareView
+          currentAudit={audit}
+          history={history}
+          onClose={() => setIsSideBySide(false)}
+          onSelectAudit={onSelectAudit}
+        />
+      ) : (
+        <>
+          {/* Grid: Risk Meter + AI Certainty Gauge + Duty Assessment */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="lg:col-span-1">
           <RiskMeter
             score={audit.risk_score}
@@ -509,6 +562,8 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           destinationCountry={audit.destination_country}
           discrepancies={audit.discrepancy_details}
         />
+      )}
+        </>
       )}
     </div>
   );

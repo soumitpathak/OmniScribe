@@ -85,6 +85,7 @@ export interface AuditResponse {
   timestamp: string;
   document_file_name?: string;
   audit_engine?: string;
+  applied_tags?: string[];
 }
 
 export interface SampleDocument {

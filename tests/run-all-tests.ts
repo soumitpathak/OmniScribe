@@ -6,6 +6,7 @@ import { runAuditEngineTests } from './audit-engine.test';
 import { runDashboardLogicTests } from './dashboard-logic.test';
 import { runEdgeCasesTests } from './edge-cases.test';
 import { runPreemptiveAndTrendTests } from './preemptive-confidence-frequency.test';
+import { runAutoTaggingAndRegionalWidgetTests } from './auto-tagging-regional-widgets.test';
 
 async function runAll() {
   console.log('=======================================================');
@@ -18,6 +19,7 @@ async function runAll() {
     runDashboardLogicTests();
     runEdgeCasesTests();
     runPreemptiveAndTrendTests();
+    runAutoTaggingAndRegionalWidgetTests();
 
     const elapsed = Date.now() - startTime;
     console.log('=======================================================');

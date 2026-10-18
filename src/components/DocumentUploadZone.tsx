@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, ChangeEvent, DragEvent } from 'react';
+import React, { useState, useMemo, useRef, useEffect, ChangeEvent, DragEvent } from 'react';
 import {
   Upload,
   FileText,
@@ -21,12 +21,18 @@ import {
   RotateCcw,
   ExternalLink,
   Building,
+  Tag,
+  Flame,
+  Clock,
+  Scale,
+  Zap,
 } from 'lucide-react';
 import { AuditResponse } from '../types/compliance';
 import { FilePreviewModal } from './FilePreviewModal';
 import { useToast } from '../context/ToastContext';
 import { RegionAnnotation } from '../types/auth';
 import { SAMPLE_DOCUMENTS } from '../data/sampleDocuments';
+import { analyzePreAuditText, PreAuditSuggestedTag } from '../utils/preAuditAutoTagger';
 
 export interface BatchItem {
   id: string;
@@ -52,6 +58,7 @@ interface DocumentUploadZoneProps {
     destinationCountry: string;
     documentType: string;
     focusRegions?: RegionAnnotation[];
+    tags?: string[];
   }) => void;
   isLoading: boolean;
   selectedCountry: string;
@@ -117,6 +124,42 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
   const [activeTab, setActiveTab] = useState<'upload' | 'batch' | 'text'>('upload');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [focusRegions, setFocusRegions] = useState<RegionAnnotation[]>([]);
+
+  // Auto-Tagging & Pre-Audit Screening State (Requirement 3)
+  const [appliedTags, setAppliedTags] = useState<string[]>([]);
+  const [customTagInput, setCustomTagInput] = useState<string>('');
+
+  // Compute pre-audit suggested tags from raw text and file metadata
+  const suggestedTags = useMemo(() => {
+    return analyzePreAuditText(rawText, file?.name, documentType);
+  }, [rawText, file?.name, documentType]);
+
+  // Handler to toggle an individual tag
+  const handleToggleTag = (tagLabel: string) => {
+    setAppliedTags((prev) =>
+      prev.includes(tagLabel) ? prev.filter((t) => t !== tagLabel) : [...prev, tagLabel]
+    );
+  };
+
+  // Handler to apply all suggested tags
+  const handleApplyAllSuggestedTags = () => {
+    const newTags = Array.from(new Set([...appliedTags, ...suggestedTags.map((s: PreAuditSuggestedTag) => s.label)]));
+    setAppliedTags(newTags);
+    toast.success('Suggested Labels Applied', `Applied ${suggestedTags.length} pre-audit regulatory tags.`);
+  };
+
+  // Handler to add custom tag
+  const handleAddCustomTag = () => {
+    const trimmed = customTagInput.trim();
+    if (!trimmed) return;
+    if (appliedTags.includes(trimmed)) {
+      toast.info('Label Already Added', `Tag "${trimmed}" is already assigned.`);
+      return;
+    }
+    setAppliedTags((prev) => [...prev, trimmed]);
+    setCustomTagInput('');
+    toast.success('Custom Label Added', `Tagged consignment with "${trimmed}".`);
+  };
 
   // Batch Processing State (Requirement 9)
   const [batchQueue, setBatchQueue] = useState<BatchItem[]>([]);
@@ -447,6 +490,8 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
     setFile(null);
     setRawText('');
     setFocusRegions([]);
+    setAppliedTags([]);
+    setCustomTagInput('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     toast.info('Document Cleared', 'Ready for new customs document ingestion.');
   };
@@ -465,8 +510,170 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
       destinationCountry: selectedCountry,
       documentType,
       focusRegions,
+      tags: appliedTags,
     });
   };
+
+  const renderAutoTaggingSection = () => (
+    <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+        <div className="flex items-center gap-2">
+          <Tag className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-bold text-white tracking-tight">
+            Pre-Audit Auto-Tagging & Risk Screening
+          </span>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+            Pre-Audit Analysis
+          </span>
+        </div>
+
+        {suggestedTags.length > 0 && (
+          <button
+            type="button"
+            onClick={handleApplyAllSuggestedTags}
+            className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>Apply All Suggested ({suggestedTags.length})</span>
+          </button>
+        )}
+      </div>
+
+      {/* Suggested Tags based on pre-audit text analysis */}
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+          <Sparkles className="w-3 h-3 text-cyan-400" />
+          {suggestedTags.length > 0
+            ? 'Candidate labels identified from document text / cargo details (click to toggle):'
+            : 'Pre-Audit Candidate Labels (click to assign prior to full audit execution):'}
+        </span>
+
+        {suggestedTags.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {suggestedTags.map((tag) => {
+              const isApplied = appliedTags.includes(tag.label);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => handleToggleTag(tag.label)}
+                  className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                    isApplied
+                      ? `${tag.colorClasses.badge} shadow-sm ring-1 ring-emerald-500/50`
+                      : 'bg-slate-900 hover:bg-slate-850 text-slate-400 border-slate-700 hover:text-slate-200'
+                  }`}
+                  title={tag.rationale}
+                >
+                  {tag.label === 'Hazardous' ? (
+                    <Flame className="w-3.5 h-3.5 text-rose-400" />
+                  ) : tag.label === 'Urgent' ? (
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  ) : tag.label === 'Requires Duty Review' ? (
+                    <Scale className="w-3.5 h-3.5 text-purple-400" />
+                  ) : (
+                    <Tag className="w-3.5 h-3.5 text-cyan-400" />
+                  )}
+                  <span>{tag.label}</span>
+                  <span className="text-[10px] font-mono opacity-80">
+                    {isApplied ? '✓' : `+${tag.confidence}%`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            {['Urgent', 'Hazardous', 'Requires Duty Review', 'Dual-Use Item'].map((label) => {
+              const isApplied = appliedTags.includes(label);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => handleToggleTag(label)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                    isApplied
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  {label === 'Hazardous' ? (
+                    <Flame className="w-3 h-3 text-rose-400" />
+                  ) : label === 'Urgent' ? (
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                  ) : (
+                    <Scale className="w-3.5 h-3.5 text-purple-400" />
+                  )}
+                  <span>{isApplied ? `✓ ${label}` : `+ ${label}`}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Rationales if any suggested tag is detected */}
+      {suggestedTags.length > 0 && (
+        <div className="space-y-1 pt-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-850">
+          {suggestedTags.map((st) => (
+            <div key={`rat-${st.id}`} className="text-[10px] font-mono text-slate-400 flex items-start gap-1.5">
+              <span className={`font-bold ${st.colorClasses.text}`}>• [{st.label}]:</span>
+              <span className="text-slate-300">{st.rationale}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Active Ingestion Tags & Custom Tag Input */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-mono text-slate-400 mr-1">Applied Ingestion Tags:</span>
+          {appliedTags.length === 0 ? (
+            <span className="text-[11px] text-slate-500 italic">None assigned yet</span>
+          ) : (
+            appliedTags.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-semibold"
+              >
+                <span>{t}</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleTag(t)}
+                  className="hover:text-rose-400 ml-0.5 cursor-pointer text-slate-400"
+                  title={`Remove label ${t}`}
+                >
+                  ✕
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            value={customTagInput}
+            onChange={(e) => setCustomTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddCustomTag();
+              }
+            }}
+            placeholder="Custom label..."
+            className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-32 font-mono"
+          />
+          <button
+            type="button"
+            onClick={handleAddCustomTag}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold cursor-pointer border border-slate-700"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   const selectedDestinationObj = DESTINATIONS.find((d) => d.code === selectedCountry) || DESTINATIONS[0];
   const batchCompletedCount = batchQueue.filter((b) => b.status === 'completed').length;
@@ -721,6 +928,9 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Pre-Audit Auto-Tagging & Screening Panel (Requirement 3) */}
+            {renderAutoTaggingSection()}
 
             {/* Submit Bar */}
             <div className="flex items-center justify-end pt-2">
@@ -1087,6 +1297,9 @@ export const DocumentUploadZone: React.FC<DocumentUploadZoneProps> = ({
                 className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-700/80 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-y"
               />
             </div>
+
+            {/* Pre-Audit Auto-Tagging & Screening Panel (Requirement 3) */}
+            {renderAutoTaggingSection()}
 
             {/* Submit Bar */}
             <div className="flex items-center justify-end pt-2">

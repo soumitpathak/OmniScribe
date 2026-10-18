@@ -56,6 +56,7 @@ import {
 import { HistoricalRiskTimelineChart } from './HistoricalRiskTimelineChart';
 import { AuditRiskFrequencyTrendChart } from './AuditRiskFrequencyTrendChart';
 import { GeographicalRiskHeatmap } from './GeographicalRiskHeatmap';
+import { RegionalRiskDistributionWidget } from './RegionalRiskDistributionWidget';
 import { HighRiskAuditMilestoneTimeline } from './HighRiskAuditMilestoneTimeline';
 import { BulkExportModal } from './BulkExportModal';
 import { CompareAuditsModal } from './CompareAuditsModal';
@@ -798,6 +799,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           }
         }}
         onResetSeedData={onResetSeedData}
+      />
+
+      {/* Global Regional Risk Zones & Audit Distribution Recharts Widget */}
+      <RegionalRiskDistributionWidget
+        history={history}
+        selectedCountryFilter={selectedCountry}
+        onSelectCountryFilter={(countryCode) => {
+          setSelectedCountry(countryCode);
+        }}
       />
 
       {/* --- REQUIREMENT 2: 90-DAY CALENDAR HEATMAP --- */}
