@@ -102,3 +102,49 @@ export interface SampleDocument {
   description: string;
   key_risks_preview: string[];
 }
+
+export type CommentCategory =
+  | 'RISK_FLAG'
+  | 'BROKER_NOTE'
+  | 'LEGAL_REGULATORY'
+  | 'AGENCY_INQUIRY'
+  | 'RESOLUTION'
+  | 'GENERAL';
+
+export type CommentPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+
+export interface CommentReply {
+  id: string;
+  author_name: string;
+  author_role: string;
+  author_avatar_color: string;
+  created_at: string;
+  content: string;
+}
+
+export interface AuditComment {
+  id: string;
+  audit_id: string;
+  author_name: string;
+  author_role: string;
+  author_avatar_color: string;
+  created_at: string;
+  updated_at?: string;
+  category: CommentCategory;
+  priority: CommentPriority;
+  is_pinned?: boolean;
+  is_resolved?: boolean;
+  content: string;
+  tags?: string[];
+  target_item_ref?: string;
+  replies?: CommentReply[];
+}
+
+export interface ComplianceOfficer {
+  id: string;
+  name: string;
+  role: string;
+  badge: string;
+  avatarColor: string;
+}
+

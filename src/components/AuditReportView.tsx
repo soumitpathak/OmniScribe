@@ -12,6 +12,7 @@ import { ConfidenceScoreGauge } from './ConfidenceScoreGauge';
 import { PreemptiveActionsCard } from './PreemptiveActionsCard';
 import { QuickSummaryCard } from './QuickSummaryCard';
 import { SideBySideAuditCompareView } from './SideBySideAuditCompareView';
+import { AuditCommentSection } from './AuditCommentSection';
 import { generateAuditPDF } from '../utils/pdfGenerator';
 import { useToast } from '../context/ToastContext';
 import {
@@ -34,6 +35,7 @@ import {
   Flame,
   Columns,
   ArrowLeftRight,
+  MessageSquare,
 } from 'lucide-react';
 
 interface AuditReportViewProps {
@@ -53,7 +55,7 @@ export const AuditReportView: React.FC<AuditReportViewProps> = ({
   const [copied, setCopied] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isSideBySide, setIsSideBySide] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'preemptive' | 'risk_factors' | 'trend' | 'entities' | 'discrepancies' | 'actions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'preemptive' | 'risk_factors' | 'trend' | 'entities' | 'discrepancies' | 'actions' | 'comments'>('overview');
 
   // Print report via browser print dialog
   const handlePrint = () => {
@@ -265,6 +267,24 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
               )}
             </button>
 
+            {/* Officer Discussion & Notes Button */}
+            <button
+              onClick={() => {
+                setIsSideBySide(false);
+                setActiveTab('comments');
+              }}
+              type="button"
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer ${
+                activeTab === 'comments' && !isSideBySide
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'
+                  : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 hover:border-indigo-500/50'
+              }`}
+              title="View and contribute internal compliance officer notes and discussion threads"
+            >
+              <MessageSquare className="w-4 h-4 text-indigo-400" />
+              <span>Officer Notes</span>
+            </button>
+
             <button
               onClick={handlePrint}
               type="button"
@@ -442,6 +462,20 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
             </span>
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('comments')}
+          className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+            activeTab === 'comments'
+              ? 'bg-indigo-950/60 text-indigo-300 border border-indigo-500/50 shadow-md shadow-indigo-500/10'
+              : 'text-slate-400 hover:text-indigo-300'
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Officer Notes & Threads</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            Discussion
+          </span>
+        </button>
       </div>
 
       {/* Tab Contents */}
@@ -507,6 +541,9 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
             </button>
           </div>
 
+          {/* Internal Compliance Officer Notes & Discussion Threads */}
+          <AuditCommentSection audit={audit} />
+
           {audit.agent_reasoning_trace && (
             <AgentThoughtTrace traces={audit.agent_reasoning_trace} />
           )}
@@ -562,6 +599,12 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
           destinationCountry={audit.destination_country}
           discrepancies={audit.discrepancy_details}
         />
+      )}
+
+      {activeTab === 'comments' && (
+        <div className="space-y-6">
+          <AuditCommentSection audit={audit} defaultExpanded={true} />
+        </div>
       )}
         </>
       )}

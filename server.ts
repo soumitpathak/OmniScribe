@@ -948,6 +948,250 @@ app.post('/api/quick-summary', async (req, res) => {
   }
 });
 
+
+// ============================================================================
+// Internal Compliance Officer Notes & Discussion Threads Store
+// ============================================================================
+interface StoredCommentReply {
+  id: string;
+  author_name: string;
+  author_role: string;
+  author_avatar_color: string;
+  created_at: string;
+  content: string;
+}
+
+interface StoredAuditComment {
+  id: string;
+  audit_id: string;
+  author_name: string;
+  author_role: string;
+  author_avatar_color: string;
+  created_at: string;
+  updated_at?: string;
+  category: 'RISK_FLAG' | 'BROKER_NOTE' | 'LEGAL_REGULATORY' | 'AGENCY_INQUIRY' | 'RESOLUTION' | 'GENERAL';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  is_pinned?: boolean;
+  is_resolved?: boolean;
+  content: string;
+  tags?: string[];
+  target_item_ref?: string;
+  replies?: StoredCommentReply[];
+}
+
+const auditCommentsStore = new Map<string, StoredAuditComment[]>();
+
+// Helper to seed initial sample notes for audit dossiers
+function getOrSeedAuditComments(auditId: string): StoredAuditComment[] {
+  if (auditCommentsStore.has(auditId)) {
+    return auditCommentsStore.get(auditId)!;
+  }
+
+  // Generate contextual initial officer notes based on audit ID or realistic scenario
+  const sampleComments: StoredAuditComment[] = [
+    {
+      id: `c_${Date.now() - 3600000 * 4}_1`,
+      audit_id: auditId,
+      author_name: 'Marcus Vance, LCB',
+      author_role: 'Senior Customs Broker (US CBP License #48912)',
+      author_avatar_color: 'from-amber-500 to-orange-600',
+      created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+      category: 'RISK_FLAG',
+      priority: 'HIGH',
+      is_pinned: true,
+      is_resolved: false,
+      content: 'Identified potential Section 301 ad valorem duty discrepancy and missing UN Manual of Tests and Criteria Part III, subsection 38.3 test summaries. Placed internal clearance hold on ACE filing pending broker review.',
+      tags: ['#UN3480', '#Section301', '#ACE-Hold', '#DangerousGoods'],
+      target_item_ref: 'Line Item #1: Rechargeable Lithium-Ion Cells',
+      replies: [
+        {
+          id: `r_${Date.now() - 3600000 * 2}_1`,
+          author_name: 'Sarah Chen',
+          author_role: 'Chief Compliance Officer',
+          author_avatar_color: 'from-emerald-500 to-teal-600',
+          created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+          content: 'Concur with hold. Notify shipper to transmit supplier declaration of conformity and manufacturer test certificates before port container gate-in.',
+        },
+        {
+          id: `r_${Date.now() - 1800000}_2`,
+          author_name: 'Marcus Vance, LCB',
+          author_role: 'Senior Customs Broker (US CBP License #48912)',
+          author_avatar_color: 'from-amber-500 to-orange-600',
+          created_at: new Date(Date.now() - 1800000).toISOString(),
+          content: 'Broker team reached out to Shenzhen logistics desk. ETA on documentation packet is 09:00 EST tomorrow.',
+        },
+      ],
+    },
+    {
+      id: `c_${Date.now() - 3600000 * 1}_2`,
+      audit_id: auditId,
+      author_name: 'Elena Rostova, JD',
+      author_role: 'Trade Sanctions & Regulatory Counsel',
+      author_avatar_color: 'from-cyan-500 to-blue-600',
+      created_at: new Date(Date.now() - 3600000 * 1).toISOString(),
+      category: 'LEGAL_REGULATORY',
+      priority: 'MEDIUM',
+      is_pinned: false,
+      is_resolved: false,
+      content: 'Verified consignee against OFAC SDN and BIS Entity Lists. Negative hit confirmed. However, Incoterms DDP requires foreign shipper to act as Importer of Record or appoint a US resident agent with Customs Power of Attorney (CPOA).',
+      tags: ['#Incoterms-DDP', '#OFAC-Screening', '#CPOA'],
+      target_item_ref: 'Shipper/Consignee Legal Assessment',
+      replies: [],
+    },
+  ];
+
+  auditCommentsStore.set(auditId, sampleComments);
+  return sampleComments;
+}
+
+// GET all comments for an audit
+app.get('/api/audits/:auditId/comments', (req, res) => {
+  try {
+    const { auditId } = req.params;
+    const comments = getOrSeedAuditComments(auditId);
+    return res.json({ audit_id: auditId, comments });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to fetch comments' });
+  }
+});
+
+// POST new root comment for an audit
+app.post('/api/audits/:auditId/comments', (req, res) => {
+  try {
+    const { auditId } = req.params;
+    const {
+      author_name,
+      author_role,
+      author_avatar_color,
+      category,
+      priority,
+      content,
+      tags,
+      target_item_ref,
+      is_pinned,
+    } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Comment content is required' });
+    }
+
+    const comments = getOrSeedAuditComments(auditId);
+    const newComment: StoredAuditComment = {
+      id: `c_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      audit_id: auditId,
+      author_name: author_name || 'Compliance Officer',
+      author_role: author_role || 'Internal Compliance Staff',
+      author_avatar_color: author_avatar_color || 'from-indigo-500 to-purple-600',
+      created_at: new Date().toISOString(),
+      category: category || 'GENERAL',
+      priority: priority || 'MEDIUM',
+      is_pinned: Boolean(is_pinned),
+      is_resolved: false,
+      content: content.trim(),
+      tags: Array.isArray(tags) ? tags : [],
+      target_item_ref: target_item_ref || undefined,
+      replies: [],
+    };
+
+    if (newComment.is_pinned) {
+      comments.unshift(newComment);
+    } else {
+      comments.push(newComment);
+    }
+
+    auditCommentsStore.set(auditId, comments);
+    return res.status(201).json(newComment);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to create comment' });
+  }
+});
+
+// POST threaded reply to a specific comment
+app.post('/api/audits/:auditId/comments/:commentId/reply', (req, res) => {
+  try {
+    const { auditId, commentId } = req.params;
+    const { author_name, author_role, author_avatar_color, content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Reply content is required' });
+    }
+
+    const comments = getOrSeedAuditComments(auditId);
+    const target = comments.find((c) => c.id === commentId);
+
+    if (!target) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    if (!target.replies) {
+      target.replies = [];
+    }
+
+    const newReply: StoredCommentReply = {
+      id: `r_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      author_name: author_name || 'Compliance Officer',
+      author_role: author_role || 'Internal Staff',
+      author_avatar_color: author_avatar_color || 'from-teal-500 to-emerald-600',
+      created_at: new Date().toISOString(),
+      content: content.trim(),
+    };
+
+    target.replies.push(newReply);
+    auditCommentsStore.set(auditId, comments);
+    return res.status(201).json(newReply);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to add reply' });
+  }
+});
+
+// PATCH comment (toggle pin, toggle resolved, edit content)
+app.patch('/api/audits/:auditId/comments/:commentId', (req, res) => {
+  try {
+    const { auditId, commentId } = req.params;
+    const comments = getOrSeedAuditComments(auditId);
+    const target = comments.find((c) => c.id === commentId);
+
+    if (!target) {
+      return res.status(404).json({ error: 'Comment not found' });
+    }
+
+    if (req.body.is_pinned !== undefined) {
+      target.is_pinned = Boolean(req.body.is_pinned);
+    }
+    if (req.body.is_resolved !== undefined) {
+      target.is_resolved = Boolean(req.body.is_resolved);
+    }
+    if (req.body.content && req.body.content.trim()) {
+      target.content = req.body.content.trim();
+      target.updated_at = new Date().toISOString();
+    }
+    if (req.body.priority) {
+      target.priority = req.body.priority;
+    }
+    if (req.body.category) {
+      target.category = req.body.category;
+    }
+
+    auditCommentsStore.set(auditId, comments);
+    return res.json(target);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to update comment' });
+  }
+});
+
+// DELETE comment
+app.delete('/api/audits/:auditId/comments/:commentId', (req, res) => {
+  try {
+    const { auditId, commentId } = req.params;
+    const comments = getOrSeedAuditComments(auditId);
+    const updated = comments.filter((c) => c.id !== commentId);
+    auditCommentsStore.set(auditId, updated);
+    return res.json({ success: true, removed_id: commentId });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to delete comment' });
+  }
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
