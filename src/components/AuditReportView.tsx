@@ -95,19 +95,19 @@ FINAL AUDIT STATUS: [ ${audit.audit_status} ]
 RISK SCORE:         ${audit.risk_score} / 100 (${audit.risk_level} RISK)
 
 1. SHIPMENT DOSSIER:
-- Shipper:          ${audit.extracted_entities.shipper_name} (${audit.extracted_entities.shipper_country})
-- Consignee:        ${audit.extracted_entities.consignee_name} (${audit.extracted_entities.consignee_country})
-- Document No:      ${audit.extracted_entities.document_number}
-- Declared Value:   ${audit.extracted_entities.currency} ${Number(audit.extracted_entities.total_declared_value || 0).toLocaleString()}
-- Incoterms:        ${audit.extracted_entities.incoterms}
-- Transport Mode:   ${audit.extracted_entities.mode_of_transport}
-- POL / POD:        ${audit.extracted_entities.port_of_loading} -> ${audit.extracted_entities.port_of_discharge}
+- Shipper:          ${audit.extracted_entities?.shipper_name || 'N/A'} (${audit.extracted_entities?.shipper_country || 'N/A'})
+- Consignee:        ${audit.extracted_entities?.consignee_name || 'N/A'} (${audit.extracted_entities?.consignee_country || 'N/A'})
+- Document No:      ${audit.extracted_entities?.document_number || 'N/A'}
+- Declared Value:   ${audit.extracted_entities?.currency || 'USD'} ${Number(audit.extracted_entities?.total_declared_value || 0).toLocaleString()}
+- Incoterms:        ${audit.extracted_entities?.incoterms || 'N/A'}
+- Transport Mode:   ${audit.extracted_entities?.mode_of_transport || 'N/A'}
+- POL / POD:        ${audit.extracted_entities?.port_of_loading || 'N/A'} -> ${audit.extracted_entities?.port_of_discharge || 'N/A'}
 
-2. COMPLIANCE DISCREPANCIES (${audit.compliance_discrepancies.length}):
-${audit.compliance_discrepancies.map((d, i) => `  [${i + 1}] ${d}`).join('\n') || '  None detected. Clean regulatory filing.'}
+2. COMPLIANCE DISCREPANCIES (${audit.compliance_discrepancies?.length || 0}):
+${(audit.compliance_discrepancies || []).map((d, i) => `  [${i + 1}] ${d}`).join('\n') || '  None detected. Clean regulatory filing.'}
 
-3. RECOMMENDED ACTIONS (${audit.recommended_actions.length}):
-${audit.recommended_actions.map((a, i) => `  [${i + 1}] ${a}`).join('\n') || '  Proceed with automated release.'}
+3. RECOMMENDED ACTIONS (${audit.recommended_actions?.length || 0}):
+${(audit.recommended_actions || []).map((a, i) => `  [${i + 1}] ${a}`).join('\n') || '  Proceed with automated release.'}
 
 4. TARIFF & PGA SUMMARY:
 - Estimated Duty:   ${audit.duty_tariff_analysis?.estimated_duty_rate || '0.0%'}
@@ -133,7 +133,8 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
 
   // Copy Summary to clipboard
   const handleCopySummary = () => {
-    const brief = `[OmniScribe Audit] Status: ${audit.audit_status} | Risk: ${audit.risk_score}/100 | Ref: ${audit.audit_id} | Dest: ${audit.destination_country} | Doc: ${audit.extracted_entities.document_number}`;
+    const docNum = audit.extracted_entities?.document_number || audit.document_file_name || 'N/A';
+    const brief = `[OmniScribe Audit] Status: ${audit.audit_status} | Risk: ${audit.risk_score}/100 | Ref: ${audit.audit_id} | Dest: ${audit.destination_country} | Doc: ${docNum}`;
     navigator.clipboard.writeText(brief);
     setCopied(true);
     toast.info('Summary Copied to Clipboard', `Reference: ${audit.audit_id} (${audit.audit_status})`);
@@ -203,9 +204,9 @@ Model: gemini-3.8-flash | Verified against WTO/WCO Harmonized Standards
                 {new Date(audit.timestamp).toLocaleDateString()} {new Date(audit.timestamp).toLocaleTimeString()}
               </span>
               <span>•</span>
-              <span>Doc No: <strong className="text-slate-200">{audit.extracted_entities.document_number}</strong></span>
+              <span>Doc No: <strong className="text-slate-200">{audit.extracted_entities?.document_number || audit.document_file_name || 'N/A'}</strong></span>
               <span>•</span>
-              <span>Total Value: <strong className="text-emerald-400">${Number(audit.extracted_entities.total_declared_value || 0).toLocaleString()} {audit.extracted_entities.currency}</strong></span>
+              <span>Total Value: <strong className="text-emerald-400">${Number(audit.extracted_entities?.total_declared_value || 0).toLocaleString()} {audit.extracted_entities?.currency || 'USD'}</strong></span>
             </div>
           </div>
 

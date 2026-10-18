@@ -47,29 +47,14 @@ OmniScribe is a continuous audit and regulatory compliance agent for cross-borde
 
 ## 🚀 Deployment to Google Cloud Run
 
-OmniScribe is packaged with a production-grade multi-stage `Dockerfile` and `requirements.txt`.
+OmniScribe is configured to run as a Node.js application.
 
-### Step 1: Build & Deploy Container
-
-```bash
-# Build the container image using Google Cloud Build
-gcloud builds submit --tag gcr.io/[PROJECT_ID]/omniscribe
-
-# Deploy to Cloud Run
-gcloud run deploy omniscribe \
-  --image gcr.io/[PROJECT_ID]/omniscribe \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars GEMINI_API_KEY="your-gemini-api-key"
-```
-
-### Local Development (Python FastAPI)
+### Local Development
 
 ```bash
-pip install -r requirements.txt
+npm install
 export GEMINI_API_KEY="your-gemini-api-key"
-uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload
+npm run dev
 ```
 
 ---
@@ -77,8 +62,6 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload
 ## 📂 Repository Structure
 
 ```
-├── backend/
-│   └── main.py                # Python FastAPI production backend & GenAI loop
 ├── src/
 │   ├── components/
 │   │   ├── Header.tsx                 # Brand navigation & jurisdiction switcher
@@ -101,8 +84,6 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload
 │   ├── App.tsx                        # Master application state coordinator
 │   ├── main.tsx                       # React DOM entry point
 │   └── index.css                      # Tailwind CSS v4 styling
-├── Dockerfile                         # Production multi-stage Dockerfile for Cloud Run
-├── requirements.txt                   # Python dependencies for FastAPI & GenAI SDK
 ├── server.ts                          # Express server with Vite middleware & Gemini API
 ├── package.json
 └── tsconfig.json

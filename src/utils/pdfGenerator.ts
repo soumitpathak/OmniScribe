@@ -116,6 +116,27 @@ export function generateAuditPDF(audit: AuditResponse): void {
   y += 24;
 
   // --- SECTION: SHIPMENT & ROUTING DOSSIER ---
+  const entities = audit.extracted_entities || {
+    document_type: 'Logistics Manifest',
+    document_number: 'N/A',
+    document_date: new Date().toISOString().slice(0, 10),
+    shipper_name: 'Not Declared',
+    shipper_address: 'Address not listed',
+    shipper_country: 'N/A',
+    shipper_tax_id: undefined,
+    consignee_name: 'Not Declared',
+    consignee_address: 'Address not listed',
+    consignee_country: 'N/A',
+    consignee_tax_id: undefined,
+    port_of_loading: 'N/A',
+    port_of_discharge: 'N/A',
+    mode_of_transport: 'Ocean / Air Cargo',
+    incoterms: 'FOB',
+    currency: 'USD',
+    total_declared_value: 0,
+    items: [],
+  };
+
   doc.setFillColor(241, 245, 249);
   doc.rect(margin, y, contentWidth, 6, 'F');
   doc.setFont('helvetica', 'bold');
@@ -137,14 +158,14 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.text('SHIPPER / EXPORTER', margin + 3, y + 5);
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  const shipperNameLines = doc.splitTextToSize(audit.extracted_entities.shipper_name || 'N/A', colWidth - 6);
+  const shipperNameLines = doc.splitTextToSize(entities.shipper_name || 'N/A', colWidth - 6);
   doc.text(shipperNameLines, margin + 3, y + 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(71, 85, 105);
-  const shipperAddrLines = doc.splitTextToSize(audit.extracted_entities.shipper_address || 'Address not listed', colWidth - 6);
+  const shipperAddrLines = doc.splitTextToSize(entities.shipper_address || 'Address not listed', colWidth - 6);
   doc.text(shipperAddrLines.slice(0, 2), margin + 3, y + 16);
-  doc.text(`Origin: ${audit.extracted_entities.shipper_country || 'N/A'} | Tax ID: ${audit.extracted_entities.shipper_tax_id || 'N/A'}`, margin + 3, y + 27);
+  doc.text(`Origin: ${entities.shipper_country || 'N/A'} | Tax ID: ${entities.shipper_tax_id || 'N/A'}`, margin + 3, y + 27);
 
   // Consignee Box
   const col2X = margin + colWidth + 6;
@@ -155,14 +176,14 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.text('CONSIGNEE / IMPORTER OF RECORD', col2X + 3, y + 5);
   doc.setFontSize(8.5);
   doc.setTextColor(15, 23, 42);
-  const consigneeNameLines = doc.splitTextToSize(audit.extracted_entities.consignee_name || 'N/A', colWidth - 6);
+  const consigneeNameLines = doc.splitTextToSize(entities.consignee_name || 'N/A', colWidth - 6);
   doc.text(consigneeNameLines, col2X + 3, y + 10);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(71, 85, 105);
-  const consigneeAddrLines = doc.splitTextToSize(audit.extracted_entities.consignee_address || 'Address not listed', colWidth - 6);
+  const consigneeAddrLines = doc.splitTextToSize(entities.consignee_address || 'Address not listed', colWidth - 6);
   doc.text(consigneeAddrLines.slice(0, 2), col2X + 3, y + 16);
-  doc.text(`Dest: ${audit.extracted_entities.consignee_country || 'N/A'} | Tax ID: ${audit.extracted_entities.consignee_tax_id || 'N/A'}`, col2X + 3, y + 27);
+  doc.text(`Dest: ${entities.consignee_country || 'N/A'} | Tax ID: ${entities.consignee_tax_id || 'N/A'}`, col2X + 3, y + 27);
 
   y += dossierBoxHeight + 3;
 
@@ -172,7 +193,7 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
   doc.setTextColor(51, 65, 85);
-  const logisticsSummary = `Transport: ${audit.extracted_entities.mode_of_transport || 'Ocean'} | POL: ${audit.extracted_entities.port_of_loading || 'N/A'} | POD: ${audit.extracted_entities.port_of_discharge || 'N/A'} | Incoterms: ${audit.extracted_entities.incoterms || 'FOB'} | Declared Value: ${audit.extracted_entities.currency} $${Number(audit.extracted_entities.total_declared_value || 0).toLocaleString()}`;
+  const logisticsSummary = `Transport: ${entities.mode_of_transport || 'Ocean'} | POL: ${entities.port_of_loading || 'N/A'} | POD: ${entities.port_of_discharge || 'N/A'} | Incoterms: ${entities.incoterms || 'FOB'} | Declared Value: ${entities.currency || 'USD'} $${Number(entities.total_declared_value || 0).toLocaleString()}`;
   doc.text(logisticsSummary, margin + 3, y + 5);
 
   y += 12;
@@ -184,7 +205,7 @@ export function generateAuditPDF(audit: AuditResponse): void {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
   doc.setTextColor(15, 23, 42);
-  doc.text(`2. CLASSIFIED LINE ITEMS (${audit.extracted_entities.items?.length || 0})`, margin + 3, y + 4.5);
+  doc.text(`2. CLASSIFIED LINE ITEMS (${entities.items?.length || 0})`, margin + 3, y + 4.5);
   y += 8;
 
   // Table Header
@@ -201,8 +222,8 @@ export function generateAuditPDF(audit: AuditResponse): void {
   y += 7;
 
   // Table Rows
-  if (audit.extracted_entities.items && audit.extracted_entities.items.length > 0) {
-    audit.extracted_entities.items.forEach((item, idx) => {
+  if (entities.items && entities.items.length > 0) {
+    entities.items.forEach((item, idx) => {
       checkPageBreak(12);
       doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
       doc.rect(margin, y - 1, contentWidth, 9, 'F');

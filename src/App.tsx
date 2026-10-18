@@ -36,6 +36,61 @@ export default function App() {
   const [isHSLookupOpen, setIsHSLookupOpen] = useState<boolean>(false);
   const [injectedHSCode, setInjectedHSCode] = useState<{ code: string; title: string; timestamp: number } | null>(null);
 
+  const sanitizeAudit = (item: any): AuditResponse => {
+    return {
+      ...item,
+      audit_id: item.audit_id || `AUD-${item.destination_country || 'USA'}-${Date.now().toString().slice(-4)}`,
+      audit_status: item.audit_status || 'FLAGGED',
+      risk_score: typeof item.risk_score === 'number' ? item.risk_score : 50,
+      risk_level: item.risk_level || 'MODERATE',
+      destination_country: item.destination_country || 'USA',
+      regulatory_framework: item.regulatory_framework || 'Customs & Border Regulatory Compliance',
+      timestamp: item.timestamp || new Date().toISOString(),
+      extracted_entities: item.extracted_entities && typeof item.extracted_entities === 'object' ? {
+        document_type: item.extracted_entities.document_type || 'Logistics Manifest',
+        document_number: item.extracted_entities.document_number || item.audit_id || 'DOC-REF',
+        document_date: item.extracted_entities.document_date || new Date().toISOString().slice(0, 10),
+        shipper_name: item.extracted_entities.shipper_name || item.document_file_name || 'Shipper Unspecified',
+        shipper_address: item.extracted_entities.shipper_address || 'Address not listed',
+        shipper_country: item.extracted_entities.shipper_country || 'Origin Country',
+        shipper_tax_id: item.extracted_entities.shipper_tax_id,
+        consignee_name: item.extracted_entities.consignee_name || item.destination_country || 'Consignee Unspecified',
+        consignee_address: item.extracted_entities.consignee_address || 'Address not listed',
+        consignee_country: item.extracted_entities.consignee_country || item.destination_country || 'USA',
+        consignee_tax_id: item.extracted_entities.consignee_tax_id,
+        port_of_loading: item.extracted_entities.port_of_loading || 'Origin Port',
+        port_of_discharge: item.extracted_entities.port_of_discharge || 'Destination Port',
+        mode_of_transport: item.extracted_entities.mode_of_transport || 'Freight Cargo',
+        incoterms: item.extracted_entities.incoterms || 'FOB',
+        currency: item.extracted_entities.currency || 'USD',
+        total_declared_value: Number(item.extracted_entities.total_declared_value) || 0,
+        items: Array.isArray(item.extracted_entities.items) ? item.extracted_entities.items : [],
+      } : {
+        document_type: item.documentType || 'Logistics Manifest',
+        document_number: item.audit_id || 'DOC-REF',
+        document_date: new Date().toISOString().slice(0, 10),
+        shipper_name: item.document_file_name || 'Shipper Unspecified',
+        shipper_address: 'Address not listed',
+        shipper_country: 'Global',
+        consignee_name: 'Consignee Unspecified',
+        consignee_address: 'Address not listed',
+        consignee_country: item.destination_country || 'USA',
+        port_of_loading: 'Origin Port',
+        port_of_discharge: 'Destination Port',
+        mode_of_transport: 'Freight Cargo',
+        incoterms: 'FOB',
+        currency: 'USD',
+        total_declared_value: 0,
+        items: [],
+      },
+      compliance_discrepancies: Array.isArray(item.compliance_discrepancies) ? item.compliance_discrepancies : [],
+      discrepancy_details: Array.isArray(item.discrepancy_details) ? item.discrepancy_details : [],
+      recommended_actions: Array.isArray(item.recommended_actions) ? item.recommended_actions : [],
+      action_details: Array.isArray(item.action_details) ? item.action_details : [],
+      agent_reasoning_trace: Array.isArray(item.agent_reasoning_trace) ? item.agent_reasoning_trace : [],
+    };
+  };
+
   // Load audit history on mount (or seed with enterprise sample audits)
   useEffect(() => {
     try {
@@ -43,7 +98,9 @@ export default function App() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setHistory(parsed);
+          const sanitized = parsed.map(sanitizeAudit);
+          setHistory(sanitized);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           return;
         }
       }
@@ -58,8 +115,9 @@ export default function App() {
 
   // Save audit history to local storage
   const saveAuditToHistory = (audit: AuditResponse) => {
+    const cleanAudit = sanitizeAudit(audit);
     setHistory((prev) => {
-      const updated = [audit, ...prev.filter((item) => item.audit_id !== audit.audit_id)].slice(0, 30);
+      const updated = [cleanAudit, ...prev.filter((item) => item.audit_id !== cleanAudit.audit_id)].slice(0, 30);
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {

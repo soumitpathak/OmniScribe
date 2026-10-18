@@ -100,10 +100,10 @@ export const AuditHistoryModal: React.FC<AuditHistoryModalProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-slate-300 mt-1 truncate">
-                        {item.extracted_entities.shipper_name} → {item.extracted_entities.consignee_name}
+                        {item.extracted_entities?.shipper_name || item.document_file_name || 'Shipper Unspecified'} → {item.extracted_entities?.consignee_name || item.destination_country || 'Consignee Unspecified'}
                       </p>
                       <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        {new Date(item.timestamp).toLocaleString()} • Value: ${Number(item.extracted_entities.total_declared_value || 0).toLocaleString()} {item.extracted_entities.currency}
+                        {new Date(item.timestamp).toLocaleString()} • Value: ${Number(item.extracted_entities?.total_declared_value || 0).toLocaleString()} {item.extracted_entities?.currency || 'USD'}
                       </p>
                     </div>
                   </div>

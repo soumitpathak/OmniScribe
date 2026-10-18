@@ -539,8 +539,55 @@ function executeDeterministicAudit(
   return result;
 }
 
+function normalizeAuditResponse(
+  parsed: any,
+  destinationCountry: string,
+  frameworkAgency: string,
+  fileName?: string,
+  rawText?: string
+): any {
+  if (!parsed || typeof parsed !== 'object') {
+    parsed = {};
+  }
+  parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
+  parsed.destination_country = destinationCountry;
+  parsed.regulatory_framework = parsed.regulatory_framework || frameworkAgency;
+  parsed.timestamp = parsed.timestamp || new Date().toISOString();
+  if (fileName) {
+    parsed.document_file_name = fileName;
+  }
+  parsed.audit_status = parsed.audit_status || 'FLAGGED';
+  parsed.risk_score = typeof parsed.risk_score === 'number' ? parsed.risk_score : 50;
+  parsed.risk_level =
+    parsed.risk_level ||
+    (parsed.risk_score >= 70 ? 'CRITICAL' : parsed.risk_score >= 30 ? 'MODERATE' : 'LOW');
+
+  if (!parsed.extracted_entities || typeof parsed.extracted_entities !== 'object') {
+    const fallback = generateDeterministicAudit(destinationCountry, rawText || fileName || '');
+    parsed.extracted_entities = fallback.extracted_entities;
+  } else {
+    parsed.extracted_entities.document_type = parsed.extracted_entities.document_type || 'Commercial Invoice';
+    parsed.extracted_entities.document_number = parsed.extracted_entities.document_number || parsed.audit_id;
+    parsed.extracted_entities.shipper_name = parsed.extracted_entities.shipper_name || 'Shipper Unspecified';
+    parsed.extracted_entities.consignee_name = parsed.extracted_entities.consignee_name || 'Consignee Unspecified';
+    parsed.extracted_entities.shipper_country = parsed.extracted_entities.shipper_country || 'Origin';
+    parsed.extracted_entities.consignee_country = parsed.extracted_entities.consignee_country || destinationCountry;
+    parsed.extracted_entities.currency = parsed.extracted_entities.currency || 'USD';
+    parsed.extracted_entities.total_declared_value = Number(parsed.extracted_entities.total_declared_value) || 0;
+    parsed.extracted_entities.items = Array.isArray(parsed.extracted_entities.items) ? parsed.extracted_entities.items : [];
+  }
+
+  parsed.compliance_discrepancies = Array.isArray(parsed.compliance_discrepancies) ? parsed.compliance_discrepancies : [];
+  parsed.discrepancy_details = Array.isArray(parsed.discrepancy_details) ? parsed.discrepancy_details : [];
+  parsed.recommended_actions = Array.isArray(parsed.recommended_actions) ? parsed.recommended_actions : [];
+  parsed.action_details = Array.isArray(parsed.action_details) ? parsed.action_details : [];
+  parsed.agent_reasoning_trace = Array.isArray(parsed.agent_reasoning_trace) ? parsed.agent_reasoning_trace : [];
+
+  return parsed;
+}
+
 // Main API: Autonomous Compliance Audit
-app.post('/api/audit', upload.single('file'), async (req, res) => {
+app.post('/api/audit', upload.single('file') as any, async (req: any, res: any) => {
   try {
     const destinationCountry = (req.body.destinationCountry || 'USA').toString().toUpperCase();
     const documentType = (req.body.documentType || 'Commercial Invoice').toString();
@@ -656,19 +703,24 @@ Please prioritize examining these specific sections and explicitly mention what 
       });
 
       const responseText = response.text?.trim() || '{}';
-      let parsed = JSON.parse(responseText);
-
-      // Enhance with metadata if missing
-      parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
-      parsed.destination_country = destinationCountry;
-      parsed.regulatory_framework = frameworkInfo.agency;
-      parsed.timestamp = new Date().toISOString();
-      if (file?.originalname) {
-        parsed.document_file_name = file.originalname;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.warn('[OmniScribe Engine] Failed to parse model JSON, falling back:', jsonErr);
+        parsed = {};
       }
-      parsed.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
 
-      return res.json(parsed);
+      const normalized = normalizeAuditResponse(
+        parsed,
+        destinationCountry,
+        frameworkInfo.agency,
+        file?.originalname,
+        rawText
+      );
+      normalized.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
+
+      return res.json(normalized);
     } catch (modelError: any) {
       if (isQuotaOrBillingError(modelError)) {
         geminiQuotaExhausted = true;
@@ -734,16 +786,23 @@ Return valid JSON.`,
         },
       });
 
-      const parsed = JSON.parse(response.text?.trim() || '{}');
-      parsed.audit_id = parsed.audit_id || `AUD-${destinationCountry}-${Date.now().toString().slice(-6)}`;
-      parsed.destination_country = destinationCountry;
-      parsed.regulatory_framework = frameworkInfo.agency;
-      parsed.timestamp = new Date().toISOString();
-      if (fileName) {
-        parsed.document_file_name = fileName;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(response.text?.trim() || '{}');
+      } catch (jsonErr) {
+        console.warn('[OmniScribe Engine] Failed to parse model JSON in audit-json, falling back:', jsonErr);
+        parsed = {};
       }
-      parsed.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
-      return res.json(parsed);
+
+      const normalized = normalizeAuditResponse(
+        parsed,
+        destinationCountry,
+        frameworkInfo.agency,
+        fileName,
+        rawText
+      );
+      normalized.audit_engine = 'OmniScribe Gemini 3.8 Multimodal Compliance Agent';
+      return res.json(normalized);
     } catch (modelError: any) {
       if (isQuotaOrBillingError(modelError)) {
         geminiQuotaExhausted = true;
